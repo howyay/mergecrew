@@ -7,13 +7,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { IdeaStore } from '../../ideation/lib/store.mjs';
-import { advanceIdea, MAX_STAGE_ATTEMPTS, STAGES, workList } from '../run.mjs';
+import { advanceIdea, MAX_STAGE_ATTEMPTS, pipelineStatusFor, STAGES, sweep, workList } from '../run.mjs';
 
 const run = promisify(execFile);
 
@@ -34,7 +35,7 @@ async function storeWith(ideas) {
 }
 
 test('the stage list is the documented order', () => {
-  assert.deepEqual(STAGES, ['prd', 'issue', 'worktree', 'dev', 'qa', 'review']);
+  assert.deepEqual(STAGES, ['prd', 'issue', 'worktree', 'dev', 'qa', 'deliver', 'review']);
 });
 
 test('workList takes accepted ideas and leaves everything else where it is', async () => {
@@ -62,6 +63,37 @@ test('workList takes accepted ideas and leaves everything else where it is', asy
     assert.deepEqual(
       queue.map((i) => i.title),
       ['accepted fresh'],
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a card parked at the gate without the artifact the gate opens on still owes a stage', async () => {
+  const { dir, store } = await storeWith([
+    { title: 'parked by the old pipeline' },
+    { title: 'parked with a deliverable' },
+  ]);
+  try {
+    const all = await store.list();
+    const byTitle = Object.fromEntries(all.map((i) => [i.title, i.id]));
+    for (const id of Object.values(byTitle)) await store.decide(id, 'accepted');
+    // Both reached the gate straight from UAT, the way records written before the
+    // deliver stage existed did.
+    await store.setPipeline(byTitle['parked by the old pipeline'], {
+      status: 'awaiting-review',
+      qa: { status: 'pass', report: 'ops/pipeline/uat/x/uat.md' },
+    });
+    await store.setPipeline(byTitle['parked with a deliverable'], {
+      status: 'awaiting-review',
+      qa: { status: 'pass', report: 'ops/pipeline/uat/x/uat.md' },
+      deliver: { status: 'done', file: 'ops/pipeline/deliver/x.md' },
+    });
+
+    const queue = await workList(store);
+    assert.deepEqual(
+      queue.map((i) => i.title),
+      ['parked by the old pipeline'],
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -258,5 +290,119 @@ test('dev done keeps the provider and commits the agent\'s work on its branch', 
     assert.equal((await run('git', ['log', '-1', '--format=%s'], { cwd: path.join(repo, worktree) })).stdout.trim(), 'shipped: shipped');
   } finally {
     await rm(repo, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Stage 5 starts from a card that already went through prd → issue → worktree →
+ * dev → qa. The deliverable is a pure function of those records, so if it
+ * invents anything it invents it from this fixture.
+ */
+function recordedStages() {
+  return {
+    prd: { file: 'ops/pipeline/prd/shipped.md', acceptance: ['invoices older than 30 days are listed'] },
+    issue: { status: 'created', url: 'https://example.test/issues/7' },
+    worktree: { status: 'created', dir: '.worktrees/shipped', branch: 'idea/shipped' },
+    dev: { status: 'done', provider: 'dsh', commit: 'a'.repeat(40), commitFiles: 3, report: 'ops/pipeline/state/agent-reports/shipped.md' },
+    qa: { status: 'done', verdict: 'pass', demo: 'ops/pipeline/uat/shipped/demo.png', report: 'ops/pipeline/uat/shipped/uat.md' },
+  };
+}
+
+const AGENT_REPORT = ['idea: shipped', 'agent: dsh', '', '## Summary', '', 'Ageing window now follows the project policy.', '', '## Evidence', '', '164 tests pass'].join('\n');
+
+async function cardAwaitingDeliverable({ title = 'Late invoices', kind = 'feature' } = {}) {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-deliver-'));
+  const { dir, store } = await storeWith([{ id: 'shipped', title, kind }]);
+  const stages = recordedStages();
+  await store.decide('shipped', 'accepted');
+  await store.setPipeline('shipped', { status: 'running', stages });
+  await mkdir(path.join(repo, 'ops/pipeline/state/agent-reports'), { recursive: true });
+  await writeFile(path.join(repo, 'ops/pipeline/state/agent-reports/shipped.md'), AGENT_REPORT, 'utf8');
+  await writeFile(path.join(repo, 'ops/pipeline/state/shipped.json'), JSON.stringify({ id: 'shipped', status: 'running', stages }, null, 2), 'utf8');
+  return { repo, dir, store };
+}
+
+test('the deliver stage writes the artifact the review gate opens on', async () => {
+  const { repo, dir, store } = await cardAwaitingDeliverable();
+  try {
+    const out = await advanceIdea(await store.get('shipped'), { store, repo, onlyStage: 'deliver' });
+    assert.equal(out.did, 'deliver');
+    assert.equal(out.kind, 'feature');
+    assert.equal(out.file, 'ops/pipeline/deliver/shipped.md');
+
+    const markdown = await readFile(path.join(repo, 'ops/pipeline/deliver/shipped.md'), 'utf8');
+    assert.match(markdown, /^# Demo: Late invoices$/m);
+    assert.match(markdown, /!\[demo\]\(demo\.png\)/);
+    assert.match(markdown, /- \[ \] invoices older than 30 days are listed/);
+
+    // The record is what the deck reads. A file nobody recorded is a deliverable
+    // nobody can find.
+    const record = JSON.parse(await readFile(path.join(repo, 'ops/pipeline/state/shipped.json'), 'utf8'));
+    assert.equal(record.stages.deliver.status, 'done');
+    assert.equal(record.stages.deliver.kind, 'feature');
+    assert.equal(record.stages.deliver.file, 'ops/pipeline/deliver/shipped.md');
+    assert.equal((await store.get('shipped')).pipeline.deliver.file, 'ops/pipeline/deliver/shipped.md');
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a technical card gets a changelog, not a demo it never made', async () => {
+  const { repo, dir, store } = await cardAwaitingDeliverable({ title: 'Split the session store', kind: 'technical' });
+  try {
+    const out = await advanceIdea(await store.get('shipped'), { store, repo, onlyStage: 'deliver' });
+    assert.equal(out.kind, 'technical');
+
+    const markdown = await readFile(path.join(repo, 'ops/pipeline/deliver/shipped.md'), 'utf8');
+    assert.match(markdown, /^# Changelog: Split the session store$/m);
+    assert.match(markdown, /Ageing window now follows the project policy\./);
+    assert.doesNotMatch(markdown, /!\[demo\]/);
+    assert.equal((await store.get('shipped')).pipeline.deliver.changelog, true);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('the review gate does not open until a deliverable exists', () => {
+  const passesUat = { dev: { status: 'done' }, qa: { status: 'done', verdict: 'pass' } };
+  assert.deepEqual(pipelineStatusFor(passesUat), { status: 'running', reason: 'UAT passed; the deliverable is next' });
+  assert.deepEqual(pipelineStatusFor({ ...passesUat, deliver: { status: 'done' } }), {
+    status: 'awaiting-review',
+    reason: 'the deliverable is ready; waiting for a human verdict',
+  });
+  // A UAT job that is still driving the browser has no verdict yet. Reading that
+  // as "no verdict" used to park the card for a human with nothing to read.
+  assert.deepEqual(pipelineStatusFor({ dev: { status: 'done' }, qa: { status: 'running' } }), {
+    status: 'running',
+    reason: 'the UAT job is still running',
+  });
+});
+
+test('a full dev budget defers the cards that need an agent, not the one whose deliverable is ready', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-slots-'));
+  const { dir, store } = await storeWith([
+    { id: 'needs-agent', title: 'needs an agent' },
+    { id: 'ready', title: 'late invoices' },
+  ]);
+  const stages = recordedStages();
+  try {
+    await store.decide('needs-agent', 'accepted');
+    await store.decide('ready', 'accepted');
+    await store.setPipeline('ready', { status: 'running', stages });
+    await mkdir(path.join(repo, 'ops/pipeline/state/agent-reports'), { recursive: true });
+    await writeFile(path.join(repo, 'ops/pipeline/state/agent-reports/ready.md'), AGENT_REPORT, 'utf8');
+    await writeFile(path.join(repo, 'ops/pipeline/state/ready.json'), JSON.stringify({ id: 'ready', status: 'running', stages }, null, 2), 'utf8');
+
+    const out = await sweep({ store, repo, maxDev: 0, maxQa: 2, log: () => {} });
+    assert.deepEqual(out.deferred, [{ id: 'needs-agent', reason: 'dev slots busy (0/0)' }]);
+    assert.equal(out.devRunning, 0);
+    assert.equal(out.advanced.length, 1);
+    assert.equal(out.advanced[0].did, 'deliver');
+    assert.equal(existsSync(path.join(repo, 'ops/pipeline/deliver/ready.md')), true);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
   }
 });

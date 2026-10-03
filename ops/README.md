@@ -1,33 +1,39 @@
 # ops/ — primitive CI/CD, automatic ideation, the swipe gate, and the delivery chain
 
-One loop, five stages, no dependencies:
+One loop, five stages, two human gates, no dependencies:
 
 ```
    git commit ─▶ mergecrew-ci.service          ops/ci/ci-loop.mjs
                  polls HEAD → checks.conf → deploy.sh
                         │ ops/ci/state/last-run.json
                         ▼
-   signals ─▶ generator ─▶ scorer ─▶ ideas.json     mergecrew-ideation.service
+   1  Ideation      signals ─▶ generator ─▶ ideas.json        mergecrew-ideation.service
+                    product rows from docs/00-product/05-features.md (IDEA_SOURCES=product)
+                        ▼
+   2  Spec + score  specifier: generalize → check against the code → acceptance criteria → re-score
+                    triage: P0..P3, so the queue is a decision, not an arrival order
                         │
                         ▼
-   swipe deck (in the product: /orgs/<slug>/ideas, plus the ops fallback on :7788)
-                        │ accept
-                        ▼
-   mergecrew-pipeline.service                      ops/pipeline/run.mjs
-     1 PRD      ops/pipeline/prd/<id>.md
-     2 Issue    GitHub or Forgejo, or a local file when there is no token
-     3 Worktree .worktrees/<id> on idea/<id>-<slug>
-     4 Dev      one agent per feature, isolated in that worktree
-     5 UAT      real chromium: strict checks + a screencast demo (APNG)
+   ▛ human gate: swipe ▟  /orgs/<slug>/ideas (product) + :7788 (ops fallback)
+                        │ accept          │ reject, optionally with a comment
+                        ▼                 ▼
+   3  Dev (parallel)   one agent per feature, isolated in .worktrees/<id>
+   4  QA (parallel)    real chromium: strict checks + a screencast demo (APNG)
+   5  Deliver          demo for a feature, changelog for a technical change
                         │
                         ▼
-   human verdict on the card (Approve / Reject) — the pipeline never merges
+   ▛ human gate: review ▟  Approve / Reject on the card — the pipeline never merges
 ```
 
 Everything is plain Node (no dependencies, no build step) and every stage
 writes its result to a file you can `cat`. Nothing in this directory claims a
 success it did not observe: a stage with no record has not run, and a failure
 keeps the provider's own words.
+
+An idea only becomes swipeable after stage 2 has specified and verified it, and
+only becomes reviewable after stage 5 has produced something to read. Both gates
+exist so that the two expensive, irreversible things — spending an agent run and
+merging code — are human decisions, while everything in between is machinery.
 
 The mergecrew *application* stack that serves https://sd.yay.how is also owned
 here (`ops/systemd/mergecrew-stack.service` + the health timer) — see section 7.
@@ -121,11 +127,38 @@ fails fast, so a broken commit is reported in seconds instead of minutes.
 
 One cycle = collect signals → generate ideas → score them → persist. The timer
 runs a cycle every `IDEATION_INTERVAL_MINUTES` (default 360), plus one cycle at
-cold start so the deck is never empty in a misleading way.
+cold start so the deck is never empty in a misleading way. Each cycle is followed
+by a *prepare* pass, which specifies up to `IDEATION_SPEC_LIMIT` drafts and
+re-ranks everything pending — a generate that only produced drafts would leave
+the deck empty and look like a broken pipeline.
 
 **Signals** (`lib/signals.mjs`, local and read-only): current HEAD/branch,
 the last 60 commit subjects, TODO/FIXME/HACK clusters grouped by directory,
-open `- [ ]` backlog items, and the last CI result from `ops/ci/state/last-run.json`.
+open `- [ ]` backlog items, the parsed product feature table, and the last CI
+result from `ops/ci/state/last-run.json`.
+
+**Where ideas come from** is a switch, not an accident (`IDEA_SOURCES`):
+
+| Value | What it proposes | Why you would pick it |
+| --- | --- | --- |
+| `product` (default) | rows of `docs/00-product/05-features.md` that are `Planned` or `In progress` | the pipeline exists to ship product features; a `Planned` row is already a product decision |
+| `chores` | the engineering rules below (CI failures, TODO clusters, fix churn …) | opt-in housekeeping; never automatic, because it competes with product work for the same agent runs |
+| `all` | both, product rows first | a maintenance week |
+
+An unrecognised value matches nothing on purpose: a typo shows up as
+"proposed 0" with the source list recorded in `lastGeneration.sources`, instead
+of silently switching the pipeline to a different kind of work.
+
+Product rows become `kind: 'feature'` cards titled `Ship: <feature>` (planned)
+or `Finish: <feature>` (in progress), each citing `docs/00-product/05-features.md:<line>`
+plus the persona. At most two rows per section, planned before in-progress, so a
+600-line status table cannot flood the deck with one theme.
+
+**On demand** (`POST /api/propose`, or the form in the UI): a person can propose
+anything — including a refactor — by hand. It lands as `source: 'human'` with
+`kind: technical` if that is what it is, and it still goes through the specifier
+and the scorer before it can be swiped. Refactors are proposed deliberately and
+specified before an agent ever touches them; they are not discovered by a rule.
 
 Marker detection is deliberately strict, because a false cluster becomes a work
 item a human then has to swipe away. A marker counts only when it is a real
@@ -190,6 +223,34 @@ Bands: `≥75 must · ≥55 should · ≥35 could · else wont`. Only `ci-failur
 impact) reaches `must`; housekeeping work such as a TODO cluster (14) or an
 untested area (18) is real but must not outrank a red trunk.
 
+A generated score is a **pre-score**: it ranks the pipeline's own queue while an
+idea waits. The score a human sees on the card is the one the specifier computed
+after reading the code, which is why triage runs after specification and not
+before it.
+
+**Specification** (`lib/specifier.mjs`) turns a headline into something a human
+can judge in ten seconds, and it runs *before* the swipe gate:
+
+| Output | What it is |
+| --- | --- |
+| `generalization` | the same need stated without the implementation detail |
+| `acceptance[]` | what has to be true for this to be done |
+| `outOfScope[]` / `openQuestions[]` | the boundary, and what the proposal does not answer |
+| `verification` | the claim checked against the code: which tokens were grepped, what came back, and whether the idea looks already implemented |
+| `score` / `band` | re-scored from real evidence: an idea whose tokens already exist is marked `alreadyImplemented: 'possible'` and drops to P3 |
+| `spec.file` | `ops/ideation/specs/<id>.md` — the document the card renders |
+
+`IDEATION_SPECIFIER=heuristic` (default) is deterministic: token grep
+(`git grep -F` over `apps packages src`) plus templates. `agent` would read the
+repository with a model; `off` bypasses the stage. Whatever ran is recorded in
+`spec.specifiedBy`, and a failure records `stage: 'spec-failed'` with the
+reason instead of leaving the card in limbo.
+
+**Triage** (`lib/triage.mjs`) assigns `P0..P3` and a `rank`, and the dev queue is
+sorted by it — the operator's P0 runs before an older P2. An override is stored
+*beside* the automatic verdict (`triage.override.automatic`), never instead of
+it, so "why is this P0" is answerable later.
+
 **Store** (`lib/store.mjs`) is one JSON file with atomic writes and serialized
 mutations. A fingerprint a human already decided (accepted *or* rejected) is
 never re-proposed, so a swipe is permanent until someone edits the file.
@@ -230,8 +291,37 @@ the host service, for when the app is down or you are already in a terminal.
 | `U` | undo the last decision |
 | `G` / `R` | generate now / reload (standalone only) |
 
-Each card shows the four rubric numbers, the source rule, the effort hint and
-the raw evidence lines — a decision is made against evidence, not a headline.
+Each card shows the four rubric numbers, the source rule, the effort hint, the
+specification and the raw evidence lines — a decision is made against evidence,
+not a headline.
+
+**Only specified cards are swipeable.** A proposal that is still a draft sits in
+a visible "being prepared" strip rather than on the deck: swiping a headline
+would spend an agent run on something nobody has specified yet. The card carries
+the kind badge (feature / technical), the triage priority, the spec panel
+(generalization, acceptance criteria, out of scope, open questions, the code
+check the specifier ran) and the deliverable once stage 5 exists.
+
+**Rejecting has two shapes**, and both are first-class: reject, or reject with a
+comment. The comment is stored on the decision (`decision.comment`,
+`decision.commented`) and in the same breath as an event detail, so it shows up
+in the timeline where the decision was made — not in a separate log nobody
+reads. Every proposal, accepted or rejected, is on the timeline (below).
+
+**Priority is overridable.** The card offers `P0..P3` plus an optional reason;
+the override is recorded beside the automatic verdict and re-ranks the dev queue
+immediately.
+
+**Timeline view.** Every event an idea produces (`proposed`, `specified`,
+`accepted`, `rejected`, `priority`, `delivered` …) is appended to that idea's own
+`events[]` and merged into one reverse-chronological stream, filterable by kind,
+status and idea. There is no second log file to keep in sync: the timeline *is*
+the union of the per-idea histories.
+
+**Propose by hand.** A form on the same page (`POST /api/propose` on the host,
+or the app route) files a feature or a refactor with its own rationale. It joins
+the same pipeline — specification, verification, scoring, triage — because "a
+human typed it" is a strong signal of value but not a specification.
 
 ### How the two surfaces stay consistent
 
@@ -254,11 +344,14 @@ HTTP API of the standalone service (all JSON):
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/healthz` | liveness: pid, uptime, repo, idea count, executor flag |
-| GET | `/api/state` | stats, last generation (incl. `fallbackReason`), CI snapshot |
-| GET | `/api/ideas?status=pending` | ideas, sorted by score |
-| POST | `/api/decide` | `{id, decision: accepted\|rejected\|pending}` |
-| POST | `/api/generate` | run a cycle now, returns real proposed/added/skipped |
+| GET | `/healthz` | liveness: pid, uptime, repo, idea count, generator/sources/specifier, executor flag |
+| GET | `/api/state` | stats (by status, band, stage, kind, priority), last generation (incl. `fallbackReason` and `sources`), CI snapshot |
+| GET | `/api/ideas?status=pending&stage=specified` | ideas in triage order |
+| GET | `/api/timeline?limit=&kind=&status=&id=` | every event, newest first, with the idea's title and any rejection comment |
+| POST | `/api/decide` | `{id, decision: accepted\|rejected\|pending, comment?, by?}` |
+| POST | `/api/priority` | `{id, priority: P0..P3, reason?, by?}` — override, kept beside the automatic verdict |
+| POST | `/api/propose` | `{title, kind?, rationale?, persona?, by?}` — a person's own proposal, still specified and scored |
+| POST | `/api/generate` | run a cycle now, then specify and rank: returns proposed/added/skipped **and** `specified`/`ranked` |
 
 App-side routes (`apps/web`): `GET /orgs/<slug>/ideas` renders the deck,
 `POST /api/ideas/decide` records one decision, `POST /api/ideas/review` records
@@ -274,17 +367,37 @@ as it honestly can. Stages, in order:
 
 | # | Stage | Writes | Stops when |
 |---|-------|--------|-----------|
-| 1 | `prd` | `ops/pipeline/prd/<id>.md` | — (deterministic, from the idea + evidence) |
+| 1 | `prd` | `ops/pipeline/prd/<id>.md` | — (deterministic, from the idea + its specification) |
 | 2 | `issue` | Forgejo/GitHub issue, else `ops/pipeline/issues/<id>.md` | no token → local file, the card says so |
 | 3 | `worktree` | `.worktrees/<id>` on `idea/<id>-<slug>` | git refuses |
 | 4 | `dev` | `TASK.md` + `PRD.md` in the worktree, one agent per feature; then the pipeline commits the tree on the idea branch | agent exits without `AGENT_REPORT.md` |
 | 5 | `qa` | `ops/pipeline/uat/<id>/{uat.md,index.html,demo.png}` | a strict check fails |
-| 6 | `review` | the human verdict, consumed from the deck | always waits for a person |
+| 6 | `deliver` | `ops/pipeline/deliver/<id>.md` — a demo for a user-facing change, a changelog entry for a technical one | — (rendered from the records above) |
+| 7 | `review` | the human verdict, consumed from the deck | always waits for a person |
 
 The gate itself is the swipe: `accept` puts a card in the queue, and the dev
 stage only starts for accepted cards. The pipeline **never merges and never
 deploys** — a passing chain ends at `awaiting-review` until a human presses
 Approve.
+
+**Dev and QA run in parallel, with separate budgets.** `PIPELINE_MAX_DEV` (2)
+and `PIPELINE_MAX_QA` (2) are counted from the cards that are actually running,
+and a full dev budget defers only the cards that need an agent — another card's
+UAT or deliverable still advances in the same sweep. A UAT is a *job*, not an
+inline wait: the sweep starts `node run.mjs --idea <id> --stage qa` detached,
+records its pid and log, and reads the verdict back from the per-idea record, so
+one slow browser cannot hold up the queue. Each idea gets a deterministic CDP
+port (`qaPort`, 9333 + hash) because two UATs sharing one debugging socket fail
+in a way that looks like a broken product.
+
+**The deliverable depends on who the change is for.** A `feature` gets a demo —
+the recording QA just made, embedded, with the acceptance criteria as checkboxes
+the human ticks — plus a line saying the UAT drives the product surface and does
+not assert that list. A `technical` change (a refactor, a change with no user
+surface) gets a changelog entry: what moved, why, and what proved it. A missing
+recording stays labelled missing; nothing here renders a claim the earlier
+stages did not write down.
+
 
 Run one stage by hand, or one idea:
 
@@ -310,9 +423,32 @@ Environment (all optional, all in `ops/systemd/mergecrew-pipeline.service.in`):
 | `PIPELINE_DEV_AGENT` | `off` | `on` lets the dev stage spawn an agent (costs tokens) |
 | `DEV_AGENT` | `auto` | `claude`, `pi` or `dsh`; `auto` takes the first one on PATH. The unit names `dsh` explicitly — see below |
 | `PIPELINE_STAGE_ATTEMPTS` | `2` | failures before a stage is parked for a human |
+| `PIPELINE_MAX_PER_SWEEP` | `4` | how many cards one sweep may touch |
+| `PIPELINE_MAX_DEV` | `2` | dev agents allowed to run at once |
+| `PIPELINE_MAX_QA` | `2` | UAT browser jobs allowed to run at once |
 | `PIPELINE_UAT_URL` | `http://127.0.0.1:3100/orgs/demo/ideas` | what the UAT drives |
+| `PIPELINE_QA_PORT` | derived per idea | CDP port for a QA job; forced by the sweep so parallel UATs cannot collide |
+| `DSH_WEB_URL` | `http://127.0.0.1:53087/` | where the watch link on the card points (see "Watching an agent") |
 | `ISSUE_TRACKER` | `auto` | `github`, `forgejo`, `none` — see below |
 | `FORGEJO_URL` / `FORGEJO_REPO` / `FORGEJO_TOKEN` | — | read from `ops/pipeline/forgejo.env` (0600, gitignored) |
+
+### Watching an agent
+
+The card can show a link to the run that is implementing it, and the honest
+version of that feature is narrower than it sounds:
+
+* `dsh headless --json` prints a JSON line naming the session when it starts.
+  The pipeline reads that line (`sessionFromLog`) and puts the id, the working
+  directory and `DSH_WEB_URL` on the card.
+* The id **cannot be chosen**: `dsh headless --session-id x` fails with
+  `session "x" not found`. So the card reports the id the harness assigned.
+* There is **no per-session deep link** — the harness UI is a single-page app
+  served at `/`, so the link opens the harness and the session is found under
+  this repository's working directory. A link that promised more would be a lie.
+* Nothing in the harness is used to *drive* the pipeline: this is read-only
+  observability. (The alternative — reading `~/.dsh/sessions/<dir>/<id>/session.v4.jsonl.zstd`
+  directly — works but only after the fact, and the file is zstd-framed.)
+
 
 ### Which agent actually runs
 
@@ -471,9 +607,10 @@ node ops/systemd/stack-health.mjs             # is the sd.yay.how origin answeri
 ```
 
 `checks.conf` runs six things, cheapest first: the CI-loop tests, the ideation
-tests, **the whole pipeline test suite** (PRD → issue → worktree → dev → UAT),
-the no-raw-SQL lint, `tsc --noEmit` for the web app (the UI users see — without
-it a sidebar change would ship unchecked), and the Forgejo tracker adapter.
+tests, **the whole pipeline test suite** (PRD → issue → worktree → dev → UAT →
+deliverable), the no-raw-SQL lint, `tsc --noEmit` for the web app (the UI users
+see — without it a sidebar change would ship unchecked), and the Forgejo tracker
+adapter.
 
 `hydration-scan.mjs` is the one gate that needs the stack up, so it stays out of
 `checks.conf`. It opens each page in headless Chromium and fails on a console

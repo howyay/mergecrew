@@ -43,7 +43,13 @@ const AGENTS = {
   // classify a provider outage from the log tail, see classifyAgentFailure.
   dsh: {
     binary: (env = process.env) => env.DSH_BIN ?? 'dsh',
-    args: (promptFile) => ['headless', `Read ${promptFile} and do the task it describes.`],
+    // --json makes the CLI print a machine-readable first line
+    // ({"type":"session","sessionId":"session-…","cwd":"…"}) before the prose.
+    // That id is the only way to find the run afterwards in the harness web UI:
+    // session ids are not choosable, and there is no per-session URL
+    // (/tmp/dsh-session-share.md has the measurements — same session store for
+    // both profiles, GUI renders a foreign session as cold/running:false).
+    args: (promptFile) => ['headless', '--json', `Read ${promptFile} and do the task it describes.`],
   },
   sandcastle: {
     binary: (env = process.env) => env.SANDCASTLE_BIN ?? 'npx',
@@ -171,6 +177,32 @@ export async function spawnDevAgent({
 }
 
 /** Tail of the agent log, for the review page and the failure report. */
+/**
+ * Pull the harness session id out of an agent log.
+ *
+ * Only dsh emits one (its --json first line); every other provider returns null
+ * rather than a fabricated id. The id is what makes "watch this run" a real
+ * thing the deck can offer instead of a promise.
+ */
+export function sessionFromLog(text = '') {
+  if (typeof text !== 'string') return null;
+  for (const line of text.split('\n').slice(0, 40)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{') || !trimmed.includes('sessionId')) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      // An empty id is not a handle: keeping it would put a watch link on the
+      // card that opens nothing.
+      if (parsed && typeof parsed.sessionId === 'string' && parsed.sessionId.trim()) {
+        return { sessionId: parsed.sessionId, cwd: typeof parsed.cwd === 'string' ? parsed.cwd : null };
+      }
+    } catch {
+      // A half-written line is normal while the child is still starting up.
+    }
+  }
+  return null;
+}
+
 export async function readAgentLog(logFile, { max = 4000 } = {}) {
   try {
     const body = await readFile(logFile, 'utf8');

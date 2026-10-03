@@ -1,0 +1,96 @@
+# Local override for rootless podman + port 3000 already used by Forgejo.
+# Web is exposed on 127.0.0.1:3100 and fronted by the Cloudflare tunnel.
+services:
+  postgres:
+    # Loopback-only publish so the migrate service (host network, see below)
+    # can reach the database. Nothing outside this host can connect.
+    ports:
+      - '127.0.0.1:55432:5432'
+  migrate:
+    # The podman bridge network on this host cannot resolve *or* route anything:
+    # `docker run --network=host` resolves binaries.prisma.sh, the same image on
+    # the bridge times out even against an explicit resolver. Prisma therefore
+    # cannot fetch its engines, `migrate deploy` exits 1, and compose treats
+    # that as a failed dependency — `up -d` aborts and leaves web/api/seed in
+    # Created state, i.e. sd.yay.how down. Host networking gives migrate the
+    # host's resolver and reaches postgres over the published loopback port
+    # instead of the bridge alias.
+    network_mode: host
+    # network_mode and networks are mutually exclusive in compose, so the
+    # base file's `networks: [internal]` has to go — with a host network there
+    # is no bridge to join anyway.
+    networks: !override []
+    environment:
+      DATABASE_URL: postgresql://mergecrew:mergecrew@127.0.0.1:55432/mergecrew?schema=public
+      DATABASE_MIGRATE_URL: postgresql://mergecrew_migrator:mergecrew_migrator@127.0.0.1:55432/mergecrew?schema=public
+  minio:
+    image: quay.io/minio/minio:latest
+  minio-init:
+    image: quay.io/minio/mc:latest
+  web:
+    environment:
+      NEXTAUTH_URL: https://sd.yay.how
+      WEB_BASE_URL: https://sd.yay.how
+      # The browser reaches web through the Cloudflare tunnel as
+      # https://sd.yay.how, so the container never sees that Host on its own
+      # interface. Auth.js v5 refuses any host it does not trust
+      # ("UntrustedHost" -> every /api/auth/* call answers 500), and it only
+      # auto-trusts when AUTH_URL (not the legacy NEXTAUTH_URL) is set.
+      # Safe here: the app is reachable only over loopback and that tunnel,
+      # which is itself gated by Cloudflare Access.
+      AUTH_TRUST_HOST: 'true'
+      # The Ideas page renders the deck the host-side ops/ideation service
+      # generates from repo signals. That service owns the repo (task files,
+      # agent runs, CI state) and cannot live in this container, so the idea
+      # file itself is the interface between them: mounted in, decisions
+      # written back out, and the host service sweeps it every few seconds and
+      # turns an accepted idea into work.
+      IDEATION_STATE_FILE: /data/ideas.json
+      # The pipeline artifacts (PRD, local issue file, UAT report, demo APNG)
+      # are written by the host-side ops/pipeline service under ops/pipeline/.
+      # Mounted read-only: the app displays them and must never author them.
+      PIPELINE_ROOT: /pipeline
+      # "Generate" is a request, not an action: the container has no repo and no
+      # service, so it drops a file the host service claims exactly once.
+      IDEATION_REQUEST_FILE: /data/generate.request
+    volumes:
+      - ./ops/ideation/state:/data
+      - ./ops/pipeline:/pipeline:ro
+      # Specifications live under ops/ideation/specs (the ideation service writes
+      # them next to its state), but the app resolves *every* host-relative
+      # artifact path against PIPELINE_ROOT, so the directory has to appear at
+      # that same virtual root. Mounting it at /specs instead would 404 the spec
+      # link on every card.
+      - ./ops/ideation/specs:/pipeline/ops/ideation/specs:ro
+    # The mounted state file stays owned by the host user. Without keep-id the
+    # container's uid 1000 is a *different* host uid (the subuid range), so the
+    # app could read the deck and fail to write a decision back.
+    userns_mode: keep-id
+    ports: !override
+      - '127.0.0.1:3100:3000'
+    build: !override
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+  api:
+    environment:
+      # Local-only credential so the e2e/verification CLI can hit the API
+      # without a browser session. Issued by the seed (sha256 stored).
+      MERGECREW_E2E_LOCAL_API_KEY: mc_live_local_verify_token
+    build: !override
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+  seed:
+    environment:
+      MERGECREW_E2E_LOCAL_API_KEY: mc_live_local_verify_token
+  orchestrator:
+    build: !override
+      context: .
+      dockerfile: infra/docker/Dockerfile.orchestrator
+  runner:
+    build: !override
+      context: .
+      dockerfile: infra/docker/Dockerfile.runner
+  worker-cron:
+    build: !override
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker-cron

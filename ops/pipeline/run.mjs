@@ -23,24 +23,36 @@
  *   PIPELINE_UAT_URL           what UAT points at (default the sd.yay.how origin)
  *   DEV_AGENT / DEV_AGENT_FLAGS / DEV_AGENT_MODEL   see lib/agent.mjs
  */
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { agentReport, commitWorktree, createWorktree, seedWorktree, worktreePath } from './lib/worktree.mjs';
-import { classifyAgentFailure, readAgentLog, spawnDevAgent } from './lib/agent.mjs';
+import { classifyAgentFailure, readAgentLog, sessionFromLog, spawnDevAgent } from './lib/agent.mjs';
+import { deliverPath, deliverable, readAgentReport } from './lib/deliver.mjs';
 import { beat, clearStage, logLine, readHeartbeat, readIdeaPipeline, recordStage, writeIdeaPipeline } from './lib/state.mjs';
 import { IdeaStore } from '../ideation/lib/store.mjs';
+import { queueOrder } from '../ideation/lib/triage.mjs';
 
 const REPO = process.env.MERGECREW_REPO ?? path.resolve(new URL('../..', import.meta.url).pathname);
 const STATE_FILE = process.env.IDEATION_STATE_FILE ?? path.join(REPO, 'ops/ideation/state/ideas.json');
 const UAT_URL = process.env.PIPELINE_UAT_URL ?? 'http://127.0.0.1:3100/orgs/demo/ideas';
-const MAX_PER_SWEEP = Math.max(1, Number(process.env.PIPELINE_MAX_PER_SWEEP ?? 2));
+const MAX_PER_SWEEP = Math.max(1, Number(process.env.PIPELINE_MAX_PER_SWEEP ?? 4));
+// How many dev agents and QA browsers may be in flight at once. The two are
+// separate budgets on purpose: an agent run takes tens of minutes and a UAT
+// takes about one, so one number for both would either stall the queue or open
+// a dozen browsers.
+const MAX_DEV_RUNNING = Math.max(1, Number(process.env.PIPELINE_MAX_DEV ?? 2));
+const MAX_QA_RUNNING = Math.max(1, Number(process.env.PIPELINE_MAX_QA ?? 2));
+// The harness web UI the dev agent's session shows up in (dsh --json prints the
+// id). There is no per-session deep link — see ops/README.md.
+const DSH_WEB_URL = process.env.DSH_WEB_URL ?? 'http://127.0.0.1:53087/';
 const DEV_AGENT_ENABLED = (process.env.PIPELINE_DEV_AGENT ?? 'off') === 'on';
 // A stage that throws is retried this many times before the idea is parked in
 // `blocked` for a human. Retrying once costs one sweep; not retrying costs a
 // silently stuck idea.
 const MAX_STAGE_ATTEMPTS = Math.max(1, Number(process.env.PIPELINE_STAGE_ATTEMPTS ?? 2));
-const STAGES = ['prd', 'issue', 'worktree', 'dev', 'qa', 'review'];
+const STAGES = ['prd', 'issue', 'worktree', 'dev', 'qa', 'deliver', 'review'];
 
 const log = (msg) => console.log(`${new Date().toISOString()} ${msg}`);
 
@@ -57,9 +69,13 @@ export function pipelineStatusFor(stages = {}, { maxAttempts = MAX_STAGE_ATTEMPT
     return { status: 'blocked', reason: `human rejected the delivered work${review.note ? `: ${review.note}` : ''}` };
   }
   if (qa) {
+    // A UAT job that is still driving the browser has no verdict yet; without
+    // this branch it would read as "no verdict" and park the card for review.
+    if (qa.status === 'running') return { status: 'running', reason: 'the UAT job is still running' };
     if (qa.verdict === 'fail') return { status: 'blocked', reason: `UAT failed: ${qa.reason ?? 'see the report'}` };
     if (qa.verdict === 'blocked') return { status: 'blocked', reason: `UAT could not run: ${qa.reason ?? 'unknown'}` };
-    return { status: 'awaiting-review', reason: 'UAT passed; waiting for a human verdict' };
+    if (!stages.deliver) return { status: 'running', reason: 'UAT passed; the deliverable is next' };
+    return { status: 'awaiting-review', reason: 'the deliverable is ready; waiting for a human verdict' };
   }
   if (dev) {
     if (dev.status === 'done') return { status: 'running', reason: 'agent reported done; UAT is next' };
@@ -89,6 +105,65 @@ async function load(name) {
   } catch (err) {
     throw new Error(`pipeline module ${name} unavailable: ${err?.message ?? err}`);
   }
+}
+
+/**
+ * A stable CDP port per idea.
+ *
+ * One browser per run, but the recorder's default 9333 is a single global
+ * socket: two concurrent UAT jobs would fight over it and one would fail with
+ * "cannot connect to the browser" — which reads like a product failure and is
+ * not one.
+ */
+export function qaPort(ideaId) {
+  let h = 0;
+  for (const ch of String(ideaId)) h = (h * 31 + ch.charCodeAt(0)) % 500;
+  return 9333 + h;
+}
+
+/**
+ * Attach the harness session id to a dev record once the log has one.
+ *
+ * The id only exists because dsh runs with --json; the value is that a human can
+ * then open that session in the harness web UI instead of guessing which run is
+ * which. No deep link exists (measured, see ops/README.md), so the record
+ * carries the id and the UI's address, nothing more.
+ */
+export async function attachSession(repo, dev) {
+  if (!dev?.logFile || dev.sessionId) return dev;
+  const text = (await readAgentLog(path.join(repo, dev.logFile), { max: 4000 })) ?? '';
+  const session = sessionFromLog(text);
+  if (!session) return dev;
+  return { ...dev, ...session, watchUrl: DSH_WEB_URL };
+}
+
+/**
+ * Start the UAT as its own process so one idea's browser run does not block the
+ * sweep that is advancing every other idea.
+ */
+export async function spawnQaJob({ repo, idea, url, port, log: emit = log } = {}) {
+  const logDir = path.join(repo, 'ops/pipeline/state/qa-logs');
+  await mkdir(logDir, { recursive: true });
+  const logFile = path.join(logDir, `${idea.id}.qa.log`);
+  const fd = await open(logFile, 'a');
+  const child = spawn(process.execPath, [path.join(repo, 'ops/pipeline/run.mjs'), '--idea', idea.id, '--stage', 'qa'], {
+    cwd: repo,
+    detached: true,
+    env: {
+      ...process.env,
+      MERGECREW_REPO: repo,
+      IDEATION_STATE_FILE: STATE_FILE,
+      PIPELINE_UAT_URL: url,
+      PIPELINE_QA_PORT: String(port),
+      // The job runs one stage; it must never start agents of its own.
+      PIPELINE_DEV_AGENT: 'off',
+    },
+    stdio: ['ignore', fd.fd, fd.fd],
+  });
+  await fd.close().catch(() => {});
+  child.on('error', (err) => emit(`UAT job for ${idea.id} failed to start: ${err?.message ?? err}`));
+  child.unref?.();
+  return { pid: child.pid, logFile };
 }
 
 const isAlive = (pid) => {
@@ -217,7 +292,7 @@ export async function advanceIdea(
       // Keep what the run record already knows — provider, command, pid, log —
       // so the deck can say *which* agent did the work, not just "agent".
       const dev = {
-        ...stages.dev,
+        ...(await attachSession(repo, stages.dev)),
         status: 'done',
         report: path.relative(repo, report.file),
         endedAt,
@@ -234,6 +309,15 @@ export async function advanceIdea(
       emit(`dev agent for ${idea.id} reported (${dev.report})`);
       return { ...out, did: 'dev', stage: 'dev', status: 'dev-done' };
     }
+    // Still running: publish the session id as soon as the CLI has printed it,
+    // so a human can watch the run instead of waiting for it.
+    const withSession = await attachSession(repo, stages.dev);
+    if (withSession.sessionId && withSession.sessionId !== stages.dev.sessionId) {
+      await recordStage(repo, idea.id, 'dev', withSession);
+      await store.setPipeline(idea.id, { dev: withSession, updatedAt: new Date().toISOString() });
+      emit(`dev agent for ${idea.id} is watchable: ${withSession.sessionId} (${DSH_WEB_URL})`);
+    }
+
     if (!isAlive(stages.dev.pid)) {
       const tail = (await readAgentLog(path.join(repo, stages.dev.logFile ?? ''))) ?? '';
       // "Ran and did not finish" and "never reached a model" are different
@@ -290,7 +374,55 @@ export async function advanceIdea(
   // re-record after a UI change); it does not change what the checks assert,
   // and the record says who ran it.
   const qaReady = stages.dev?.status === 'done' || (forceQa && Boolean(stages.dev));
+  // `--stage qa` is what the job below runs: it is the one caller that must run
+  // the browser in-process, because it *is* the process. A sweep only starts
+  // jobs, so a UAT never blocks the queue behind it.
+  const qaInline = onlyStage === 'qa';
+
+  if (stages.qa?.status === 'running' && !qaInline) {
+    // The job is alive → nothing to do; it owns the stage (and its writer lock).
+    if (isAlive(stages.qa.pid)) return { ...out, did: null, stage: 'qa', status: 'qa-running' };
+    // It exited. Either it wrote a verdict (normal) or it died (a real failure).
+    const fresh = (await readIdeaPipeline(repo, idea.id)).stages?.qa;
+    if (fresh && fresh.status !== 'running') {
+      await store.setPipeline(idea.id, { qa: fresh, updatedAt: new Date().toISOString() });
+      emit(`UAT job for ${idea.id} finished: ${fresh.verdict ?? fresh.status}`);
+      return { ...out, did: 'qa', stage: 'qa', status: fresh.verdict ?? fresh.status, report: fresh.report ?? null, demo: fresh.demo ?? null };
+    }
+    const tail = (await readAgentLog(path.join(repo, stages.qa.logFile ?? ''), { max: 1200 })) ?? '';
+    const qa = {
+      ...stages.qa,
+      status: 'failed',
+      endedAt: new Date().toISOString(),
+      reason: 'the UAT job exited without writing a verdict',
+      logTail: tail.slice(-1200),
+    };
+    await recordStage(repo, idea.id, 'qa', qa);
+    await store.setPipeline(idea.id, { qa, status: 'blocked', reason: qa.reason, updatedAt: new Date().toISOString() });
+    emit(`UAT job for ${idea.id} died — ${qa.reason} (see ${stages.qa.logFile})`);
+    return { ...out, did: 'qa', stage: 'qa', status: 'blocked', reason: qa.reason };
+  }
+
   if (!stages.qa && qaReady && (!onlyStage || onlyStage === 'qa')) {
+    const port = Number(process.env.PIPELINE_QA_PORT) || qaPort(idea.id);
+    const source = forceQa && stages.dev?.status !== 'done' ? 'manual' : 'pipeline';
+    if (!qaInline) {
+      const job = await spawnQaJob({ repo, idea, url, port, log: emit });
+      const qa = {
+        status: 'running',
+        pid: job.pid,
+        logFile: path.relative(repo, job.logFile),
+        startedAt: new Date().toISOString(),
+        port,
+        source,
+        devStatus: stages.dev?.status ?? null,
+      };
+      await recordStage(repo, idea.id, 'qa', qa);
+      await store.setPipeline(idea.id, { qa, updatedAt: new Date().toISOString() });
+      emit(`UAT job for ${idea.id} started (pid ${job.pid}, cdp ${port}, log ${qa.logFile})`);
+      return { ...out, did: 'qa', stage: 'qa', status: 'qa-started', port };
+    }
+
     const { runUat, uatMarkdown } = await load('./lib/uat.mjs');
     const outDir = path.join(repo, 'ops/pipeline/uat', idea.id);
     await mkdir(outDir, { recursive: true });
@@ -303,7 +435,9 @@ export async function advanceIdea(
       { name: 'ideas page loads', action: 'expect', selector: 'main', text: 'Ideas' },
       { name: `the accepted card for ${idea.id} is on the page`, action: 'expect', selector: 'body', text: idea.id },
     ];
-    const result = await runUat({ idea, url, outDir, steps, acceptance, log: emit });
+    // The port is unique per idea so two concurrent UAT jobs cannot fight over
+    // one CDP socket and report the collision as a product failure.
+    const result = await runUat({ idea, url, outDir, steps, acceptance, port, log: emit });
     const reportFile = path.join(outDir, 'uat.md');
     const uat = {
       verdict: result.verdict,
@@ -317,9 +451,10 @@ export async function advanceIdea(
       player: result.demo ? path.relative(repo, result.demo) : null,
       durationMs: result.durationMs,
       consoleErrors: result.consoleErrors?.length ?? 0,
+      port,
       // Who asked for this run, and what the gate was standing on. A manual run
       // is still a real run, but the record must not imply the agent finished.
-      source: forceQa && stages.dev?.status !== 'done' ? 'manual' : 'pipeline',
+      source,
       devStatus: stages.dev?.status ?? null,
       // The PRD's acceptance criteria are prose for a human to judge at the
       // review gate below; UAT asserts the product surface, not that list. Say
@@ -335,8 +470,37 @@ export async function advanceIdea(
     return { ...out, did: 'qa', stage: 'qa', status: uat.verdict, report: uat.report, demo: uat.demo };
   }
 
+  // 6. Deliver: the artifact a human opens at the review gate ----------------
+  // A feature ships with a recording to watch; a technical change ships with a
+  // changelog entry to read. Either way the gate gets something to look at,
+  // built only from what the earlier stages actually wrote.
+  const qaDone = stages.qa && stages.qa.status !== 'running';
+  if (qaDone && !stages.deliver && (!onlyStage || onlyStage === 'deliver')) {
+    const artifact = deliverable({ idea, stages, reportText: await readAgentReport(repo, stages) });
+    const file = deliverPath(repo, idea.id);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, artifact.markdown);
+    const deliver = {
+      status: 'done',
+      kind: artifact.kind,
+      file: path.relative(repo, file),
+      title: artifact.title,
+      demo: artifact.demo,
+      changelog: artifact.changelog,
+      bullets: artifact.bullets,
+      summary: artifact.summary ? artifact.summary.split('\n')[0].slice(0, 240) : null,
+      wroteAt: new Date().toISOString(),
+    };
+    await recordStage(repo, idea.id, 'deliver', deliver);
+    const merged = (await readIdeaPipeline(repo, idea.id)).stages;
+    await writeIdeaPipeline(repo, idea.id, { stages: { ...merged, deliver } });
+    await store.setPipeline(idea.id, { deliver, updatedAt: new Date().toISOString() });
+    emit(`deliverable for ${idea.id}: ${deliver.kind} → ${deliver.file}`);
+    return { ...out, did: 'deliver', stage: 'deliver', kind: deliver.kind, file: deliver.file };
+  }
+
   // 6. Review gate: the second human gate ------------------------------------
-  if (stages.qa && (!onlyStage || onlyStage === 'review')) {
+  if (qaDone && (!onlyStage || onlyStage === 'review') && (onlyStage === 'review' || stages.deliver?.status === 'done')) {
     const human = idea.review ?? null;
     const decided = human?.decision === 'approved' || human?.decision === 'rejected';
     if (!decided && stages.review?.status === 'awaiting-review') {
@@ -359,6 +523,8 @@ export async function advanceIdea(
       commit: stages.dev?.commit ?? null,
       qa: stages.qa?.verdict ?? null,
       demo: stages.qa?.demo ?? null,
+      deliverable: stages.deliver?.file ?? null,
+      deliverKind: stages.deliver?.kind ?? null,
     };
     if (decided) {
       // The pipeline never merges or deploys: approval records the verdict and
@@ -409,21 +575,62 @@ async function readGenerationSignals(repo) {
  */
 export async function workList(store, { maxAttempts = MAX_STAGE_ATTEMPTS } = {}) {
   const ideas = await store.list();
-  return ideas.filter((i) => {
+  const ready = ideas.filter((i) => {
     if (i.status !== 'accepted') return false;
     const p = i.pipeline ?? {};
     // Parked for a human: back to work only once that human has answered.
-    if (p.status === 'awaiting-review') return Boolean(i.review?.decision);
+    if (p.status === 'awaiting-review') {
+      if (i.review?.decision) return true;
+      // …but a card parked before the deliver stage existed has nothing for
+      // that human to open, so it still owes a stage. Records written by the
+      // older pipeline reach `awaiting-review` straight from UAT.
+      return Boolean(p.qa && p.qa.status !== 'running' && !p.deliver);
+    }
     if (['done', 'blocked'].includes(p.status)) return false;
     if (p.status === 'failed' && (p.attempts ?? 0) >= maxAttempts) return false;
     return true;
   });
+  // Triage order, not accept order: the operator's P0 runs before an older P2
+  // (queueOrder falls back to score for cards that were never triaged).
+  return queueOrder(ready);
 }
 
-export async function sweep({ store, repo = REPO, url = UAT_URL, max = MAX_PER_SWEEP, log: emit = log } = {}) {
+export async function sweep({
+  store,
+  repo = REPO,
+  url = UAT_URL,
+  max = MAX_PER_SWEEP,
+  maxDev = MAX_DEV_RUNNING,
+  maxQa = MAX_QA_RUNNING,
+  log: emit = log,
+} = {}) {
   const queue = await workList(store);
+  const stagesOf = (idea) => idea.pipeline?.stages ?? {};
+  // Slots, not a global pause: a full dev budget must not stop another card's
+  // QA or deliverable from advancing in the same sweep.
+  let devRunning = queue.filter((i) => stagesOf(i).dev?.status === 'running').length;
+  let qaRunning = queue.filter((i) => stagesOf(i).qa?.status === 'running').length;
+  const deferred = [];
+  const work = [];
+  for (const idea of queue) {
+    if (work.length >= max) break;
+    const stages = stagesOf(idea);
+    const startsDev = !stages.dev;
+    const startsQa = !stages.qa && stages.dev?.status === 'done';
+    if (startsDev && devRunning >= maxDev) {
+      deferred.push({ id: idea.id, reason: `dev slots busy (${devRunning}/${maxDev})` });
+      continue;
+    }
+    if (startsQa && qaRunning >= maxQa) {
+      deferred.push({ id: idea.id, reason: `qa slots busy (${qaRunning}/${maxQa})` });
+      continue;
+    }
+    if (startsDev) devRunning += 1;
+    if (startsQa) qaRunning += 1;
+    work.push(idea);
+  }
   const done = [];
-  for (const idea of queue.slice(0, max)) {
+  for (const idea of work) {
     try {
       done.push(await advanceIdea(idea, { store, repo, url, log: emit }));
     } catch (err) {
@@ -439,8 +646,15 @@ export async function sweep({ store, repo = REPO, url = UAT_URL, max = MAX_PER_S
       done.push({ id: idea.id, status: 'error', reason, attempts, nextStatus: status });
     }
   }
-  await beat(repo, { mode: 'sweep', queue: queue.length, advanced: done.length, devAgent: DEV_AGENT_ENABLED });
-  return { queue: queue.length, advanced: done };
+  await beat(repo, {
+    mode: 'sweep',
+    queue: queue.length,
+    advanced: done.length,
+    devRunning,
+    qaRunning,
+    devAgent: DEV_AGENT_ENABLED,
+  });
+  return { queue: queue.length, advanced: done, deferred, devRunning, qaRunning };
 }
 
 async function main() {

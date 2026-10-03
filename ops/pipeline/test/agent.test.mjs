@@ -17,6 +17,7 @@ import {
   classifyAgentFailure,
   readAgentLog,
   resolveAgent,
+  sessionFromLog,
   spawnDevAgent,
 } from '../lib/agent.mjs';
 
@@ -79,7 +80,8 @@ test('buildCommand passes the briefing file and lets DEV_AGENT_FLAGS tighten the
   // has no permission flag to pass through.
   const dsh = buildCommand({ provider: 'dsh', bin: 'dsh' });
   assert.equal(dsh.command, 'dsh');
-  assert.deepEqual(dsh.args, ['headless', 'Read TASK.md and do the task it describes.']);
+  // --json is what makes the run findable in the harness web UI afterwards.
+  assert.deepEqual(dsh.args, ['headless', '--json', 'Read TASK.md and do the task it describes.']);
 });
 
 function stubSpawn(captured) {
@@ -224,4 +226,28 @@ test('childEnv strips the pipeline control knobs and keeps everything else', () 
   assert.equal(env.DEV_AGENT, 'dsh');
   assert.equal(env.IDEATION_PORT, '7788');
   assert.equal(env.MERGECREW_IDEA_ID, 'idea-abc123');
+});
+
+// `dsh headless --json` prints one JSON line per event, and the first one names
+// the session. That id is the only handle on a run: it cannot be chosen up
+// front, and the harness web UI has no per-session URL — so the log line is what
+// turns "an agent is working" into something an operator can actually watch.
+test('sessionFromLog finds the session id dsh prints when the run starts', () => {
+  const log = [
+    '{"type":"session","sessionId":"session-6f2a1c9e","cwd":"/repo/.worktrees/idea-abc123"}',
+    '{"type":"message","text":"reading TASK.md"}',
+  ].join('\n');
+  assert.deepEqual(sessionFromLog(log), { sessionId: 'session-6f2a1c9e', cwd: '/repo/.worktrees/idea-abc123' });
+});
+
+test('sessionFromLog tolerates a half-written line and stays quiet without one', () => {
+  // A log is read while it is being written: the interesting line may be cut in
+  // half, and that must not throw inside a sweep.
+  assert.equal(sessionFromLog('{"type":"session","sessionId":"session-6f2a1c'), null);
+  assert.equal(sessionFromLog(''), null);
+  assert.equal(sessionFromLog('agent: claude\nno json here'), null);
+  // JSON without a session id (a tool event) is not a session announcement.
+  assert.equal(sessionFromLog('{"type":"tool","name":"bash","cwd":"/repo"}'), null);
+  // The id is only trusted when it is a non-empty string.
+  assert.equal(sessionFromLog('{"type":"session","sessionId":""}'), null);
 });

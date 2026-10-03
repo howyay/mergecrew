@@ -13,6 +13,21 @@ Environment=IDEATION_HOST=127.0.0.1
 Environment=IDEATION_PORT=7788
 Environment=IDEATION_INTERVAL_MINUTES=360
 Environment=EXECUTOR=off
+# Where ideas come from. `product` reads the feature table in
+# docs/00-product/05-features.md and proposes the rows that are Planned or In
+# progress — the pipeline exists to ship product features, not to tidy up its own
+# code. `chores` (ci failures, TODO clusters, fix churn) stays available but is
+# opt-in: IDEA_SOURCES=all enables both.
+Environment=IDEA_SOURCES=product
+# A one-line proposal is not a specification. The specifier writes acceptance
+# criteria, checks the claim against the code and re-scores the idea *before* a
+# human sees the card, so the swipe decides between specified proposals instead
+# of between headlines. `heuristic` is the deterministic path (token grep plus
+# templates); `off` sends raw proposals straight to the deck.
+Environment=IDEATION_SPECIFIER=heuristic
+# How many proposals get specified per pass. Each pass greps the repository, so
+# this bounds work per cycle rather than chasing a target.
+Environment=IDEATION_SPEC_LIMIT=3
 ExecStart=__NODE__ __REPO__/ops/ideation/server.mjs
 Restart=always
 RestartSec=5
