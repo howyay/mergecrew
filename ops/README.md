@@ -673,6 +673,36 @@ The repair path is tested by hand, not by the timer alone: stopping
 `mergecrew-stack.service` and running the health service brought the origin back
 in ~16s.
 
+### Rebuilding the web image takes two things people get wrong
+
+`mergecrew-web` runs a built standalone bundle, not a bind-mount of the sources,
+so a `apps/web/src/**` change does nothing on `127.0.0.1:3100` until the image is
+rebuilt and the stack restarted:
+
+```bash
+export DOCKER_HOST=unix:///run/user/1000/podman/podman.sock   # docker CLI talks to rootless podman
+docker buildx build --builder mc -f infra/docker/Dockerfile.web \
+  --build-arg NODE_VERSION=22-bookworm-slim -t mergecrew/web:latest --load .
+podman tag docker.io/mergecrew/web:latest localhost/mergecrew/web:latest
+systemctl --user restart mergecrew-stack.service
+docker exec mergecrew-web sh -c 'grep -rl "Changelog" /app/apps/web/.next | head'   # prove the bundle changed
+```
+
+- **The `default` buildkit builder cannot resolve DNS on this host.** Its
+  `/etc/resolv.conf` is a snapshot from before the Tailscale magic-DNS resolver
+  went away (`nameserver 100.100.100.100`), so `docker compose build web` dies
+  with `failed to resolve source metadata for docker.io/library/node:22-bookworm-slim
+  ... lookup registry-1.docker.io: i/o timeout` even though the host pulls the
+  same tag fine. `--add-host` does not help: the lookup happens in the builder
+  daemon, not the build container. `docker buildx rm default` is refused
+  (`context builder cannot be removed`). The fix is a second builder that shares
+  the host network namespace: `docker buildx create --name mc --driver
+  docker-container --driver-opt network=host --use --bootstrap`.
+- **buildx tags land as `docker.io/mergecrew/web:latest`, compose runs
+  `localhost/mergecrew/web:latest`.** `up -d --no-build` then happily keeps the
+  old image and the page never changes; `docker tag` through the podman API is a
+  no-op. `podman tag` is what makes the new image visible to compose.
+
 ### The bridge network on this host has no way out
 
 Rootless podman on this machine builds container networks that can neither
