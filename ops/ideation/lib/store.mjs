@@ -22,6 +22,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { kindForSource, normalizeKind } from './kinds.mjs';
+
 export const STATE_VERSION = 2;
 
 /** Per-idea event log cap. History matters; unbounded growth does not. */
@@ -53,25 +55,11 @@ const emptyState = () => ({ version: STATE_VERSION, updatedAt: null, lastGenerat
 /**
  * What an idea is *for*, when the record does not say.
  *
- * The deck split product features from engineering chores, so a record from
- * before that split has to be classified rather than defaulted: reading a
- * "clean up 10 TODO markers" card as a user-facing feature would put it on the
- * swipe deck as something to ship.
+ * The classification rules and the workflow they select live in `kinds.mjs`
+ * (shared with the pipeline and the deck); this module re-exports them so the
+ * store stays the one import an operator needs, and applies them on read.
  */
-const CHORE_SOURCES = new Set([
-  'ci-failure',
-  'ci-missing',
-  'todo-cluster',
-  'disabled-check',
-  'deploy-hook',
-  'untested-area',
-  'backlog',
-  'fix-churn',
-]);
-
-export function kindForSource(source) {
-  return CHORE_SOURCES.has(source) ? 'technical' : 'feature';
-}
+export { CHORE_SOURCES, KINDS, kindForSource, normalizeKind, needsSpecification, workflowFor } from './kinds.mjs';
 
 /**
  * Bring a stored idea up to the current shape, in memory, on read.
@@ -86,7 +74,9 @@ export function kindForSource(source) {
 export function normalizeIdea(idea) {
   if (!idea || typeof idea !== 'object') return idea;
   const out = { ...idea };
-  out.kind = out.kind ?? kindForSource(out.source);
+  // `technical` was the old word for `chore`; a record that keeps it would fall
+  // out of the workflow table (no spec, no PRD, checks instead of a browser).
+  out.kind = normalizeKind(out.kind ?? kindForSource(out.source));
   out.stage = out.stage ?? 'draft';
   out.stale = out.stale ?? false;
   out.events = Array.isArray(out.events) ? out.events : [];
@@ -378,6 +368,10 @@ export class IdeaStore {
    * current signals no longer support must say so instead of keeping a claim
    * that has quietly stopped being true (for example "add tests to ops/ci"
    * after ops/ci gained a test suite).
+   *
+   * A card a person proposed is exempt: its backing is that person, not a
+   * signal, and no cycle can ever re-propose it. Marking it stale would make
+   * the one card somebody asked for the one card nobody can swipe.
    */
   async markStaleness(fresh) {
     const keep = fresh instanceof Set ? fresh : new Set(fresh);
@@ -387,6 +381,7 @@ export class IdeaStore {
       let cleared = 0;
       for (const idea of data.ideas) {
         if (idea.status !== 'pending') continue; // a decided card keeps its history
+        if (idea.source === 'human') continue; // a person's card does not expire
         const stale = !keep.has(idea.fingerprint);
         if (stale && !idea.stale) marked++;
         if (!stale && idea.stale) cleared++;

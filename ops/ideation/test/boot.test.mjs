@@ -42,7 +42,9 @@ test('a restart on an older state file brings its drafts to the swipe gate', asy
   try {
     await mkdir(path.join(fixture, 'apps/api'), { recursive: true });
     await writeFile(path.join(fixture, 'apps/api/handler.ts'), 'export const handler = () => {};\n', 'utf8');
-    // A record from before the deck had kinds, stages or a timeline.
+    // Two records from before the deck had kinds, stages or a timeline: one
+    // engineering chore and one product feature. They now take different routes
+    // to the same gate, which is the point of the kinds table.
     await writeFile(
       stateFile,
       JSON.stringify(
@@ -63,6 +65,19 @@ test('a restart on an older state file brings its drafts to the swipe gate', asy
               rationale: 'a check is commented out',
               evidence: ['ops/ci/checks.conf:13 pnpm -w typecheck'],
               createdAt: '2026-10-02T19:00:00.000Z',
+            },
+            {
+              id: 'idea-legacy2',
+              fingerprint: 'product-feature:y',
+              title: 'Ship: audit log export',
+              source: 'product-feature',
+              status: 'pending',
+              score: 41,
+              band: 'should',
+              effortHint: 'medium',
+              rationale: 'the doc plans it and the code does not have it',
+              evidence: ['docs/product/roadmap.md:42 audit log export'],
+              createdAt: '2026-10-02T19:30:00.000Z',
             },
           ],
         },
@@ -103,27 +118,38 @@ test('a restart on an older state file brings its drafts to the swipe gate', asy
       return m ? m[1] : null;
     });
 
-    const idea = await waitFor('the legacy card to reach the swipe gate', async () => {
-      const body = await fetch(`${base}/api/ideas`).then((r) => r.json());
-      const found = (body.ideas ?? []).find((i) => i.id === 'idea-legacy1');
+    const list = async () => (await fetch(`${base}/api/ideas`).then((r) => r.json())).ideas ?? [];
+    const feature = await waitFor('the legacy feature to reach the swipe gate', async () => {
+      const found = (await list()).find((i) => i.id === 'idea-legacy2');
       return found?.stage === 'specified' ? found : null;
     });
 
-    assert.equal(idea.kind, 'technical', 'a chore must not arrive on the deck as a user-facing feature');
-    assert.equal(idea.stage, 'specified');
-    assert.equal(idea.spec.specifiedBy, 'heuristic');
-    assert.match(idea.spec.file, /ops\/ideation\/specs\/idea-legacy1\.md$/);
-    assert.equal(typeof idea.triage?.priority, 'string');
+    assert.equal(feature.kind, 'feature');
+    assert.equal(feature.stage, 'specified');
+    assert.equal(feature.spec.specifiedBy, 'heuristic');
+    assert.match(feature.spec.file, /ops\/ideation\/specs\/idea-legacy2\.md$/);
     // The gate the UI filters on: pending, specified, not stale.
-    assert.equal(idea.status, 'pending');
-    assert.equal(idea.stale, false);
-    assert.equal(existsSync(path.join(fixture, idea.spec.file)), true);
-    assert.match(await readFile(path.join(fixture, idea.spec.file), 'utf8'), /## Acceptance criteria/);
+    assert.equal(feature.status, 'pending');
+    assert.equal(feature.stale, false);
+    assert.equal(existsSync(path.join(fixture, feature.spec.file)), true);
+    assert.match(await readFile(path.join(fixture, feature.spec.file), 'utf8'), /## Acceptance criteria/);
+
+    // The chore takes the other route: classified, ranked, and *not* specified.
+    // No spec document, no verification pass, no score — a chore is the finding.
+    const chore = (await list()).find((i) => i.id === 'idea-legacy1');
+    assert.equal(chore.kind, 'chore', 'a chore must not arrive on the deck as a user-facing feature');
+    assert.notEqual(chore.stage, 'specified');
+    assert.equal(chore.spec ?? null, null);
+    assert.equal(typeof chore.triage?.priority, 'string', 'a chore still needs a queue position');
+    assert.equal(chore.triage.priority, 'P1', 'a parked check is not housekeeping');
+    assert.equal(chore.score, 68, 'the old score is left where it was: nothing rescored this card');
+    assert.equal(existsSync(path.join(fixture, 'ops/ideation/specs/idea-legacy1.md')), false);
 
     // The migration is persisted, not re-derived on every read.
-    await waitFor('the migrated record to be written back', async () => {
+    await waitFor('the migrated records to be written back', async () => {
       const saved = JSON.parse(await readFile(stateFile, 'utf8'));
-      return saved.version === 2 && saved.ideas[0].stage === 'specified';
+      const kinds = saved.ideas.map((i) => i.kind).sort();
+      return saved.version === 2 && kinds.join(',') === 'chore,feature';
     });
   } finally {
     child?.kill('SIGTERM');

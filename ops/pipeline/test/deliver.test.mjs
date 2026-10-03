@@ -2,7 +2,7 @@
  * The deliverable is what a human actually reads at the review gate, so the
  * property under test is honesty: the markdown must never claim more than the
  * earlier stages recorded. A missing recording stays missing, a missing agent
- * report stays missing, and a technical change is never dressed up as a demo.
+ * report stays missing, and a chore is never dressed up as a demo.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,11 +29,37 @@ const featureStages = {
   qa: { verdict: 'pass', demo: 'ops/pipeline/uat/idea-abc12345/demo.png', report: 'ops/pipeline/uat/idea-abc12345/uat.md' },
 };
 
+// The same card run as a chore: no PRD document, no browser, a check record.
+const choreStages = {
+  ...featureStages,
+  prd: { skipped: true, reason: 'a chore needs no PRD — the signal that produced it is the specification', acceptance: [] },
+  qa: {
+    mode: 'checks',
+    status: 'done',
+    verdict: 'pass',
+    results: [
+      { command: 'node --test "ops/ci/test/*.test.mjs"', status: 'passed', exitCode: 0 },
+      { command: 'node --test "ops/pipeline/test/*.test.mjs"', status: 'passed', exitCode: 0 },
+    ],
+    skipped: [
+      {
+        command: 'pnpm -w lint:no-raw-sql',
+        reason: 'needs installed dependencies, and a worktree is a fresh checkout without node_modules',
+      },
+    ],
+    ranAt: AT,
+  },
+};
+
 test('deliverKind decides from who the change is for', () => {
-  assert.deepEqual(DELIVER_KINDS, ['feature', 'technical']);
+  assert.deepEqual(DELIVER_KINDS, ['feature', 'chore', 'refactor', 'technical']);
   assert.equal(deliverKind({ kind: 'feature' }), 'feature');
-  assert.equal(deliverKind({ kind: 'technical' }), 'technical');
-  assert.equal(deliverKind({ kind: 'refactor' }), 'technical');
+  assert.equal(deliverKind({ kind: 'chore' }), 'chore');
+  assert.equal(deliverKind({ kind: 'refactor' }), 'refactor');
+  // The old word is still on disk and in delivered artifacts: a record that
+  // carries it is a chore, not an unclassified fourth thing.
+  assert.equal(deliverKind({ kind: 'technical' }), 'chore');
+  assert.equal(deliverKind({ kind: 'Technical' }), 'chore');
   // A proposal that never declared a kind is a feature by default: an
   // undeclared refactor is the exception, not the rule.
   assert.equal(deliverKind({}), 'feature');
@@ -80,7 +106,7 @@ test('a feature deliverable without acceptance criteria admits the PRD was empty
   assert.match(out.markdown, /_The PRD carried no acceptance criteria\._/);
 });
 
-test('a technical deliverable is a changelog built from the agent own report', () => {
+test('a chore deliverable is a changelog built from the agent own report', () => {
   const report = [
     'idea: idea-abc12345',
     'agent: dsh',
@@ -96,29 +122,59 @@ test('a technical deliverable is a changelog built from the agent own report', (
   ].join('\n');
 
   const out = deliverable({
-    idea: { ...featureIdea, kind: 'technical' },
-    stages: featureStages,
+    idea: { ...featureIdea, kind: 'chore' },
+    stages: choreStages,
     reportText: report,
     at: AT,
   });
 
-  assert.equal(out.kind, 'technical');
+  assert.equal(out.kind, 'chore');
   assert.equal(out.changelog, true);
-  // A refactor has no screenshot to show, and must not silently reuse one.
+  // A chore has no screenshot to show, and must not silently reuse one.
   assert.equal(out.demo, null);
   assert.match(out.markdown, /^# Changelog: Late invoices$/m);
   assert.match(out.markdown, /Moved the ageing window behind a policy read so per-project settings apply\./);
   assert.match(out.markdown, /## Why/);
   assert.match(out.markdown, /Finance chases these by hand every month\./);
+  // The evidence says which oracle ran: checks, not a browser.
+  assert.match(out.markdown, /- Checks: pass \(2 check\(s\) passed, 1 skipped\)/);
   assert.match(out.markdown, /- Touches: 3 file\(s\)/);
+  assert.match(out.markdown, /## Checks/);
+  assert.match(out.markdown, /- ✅ `node --test "ops\/ci\/test\/\*\.test\.mjs"`/);
+  assert.match(out.markdown, /- ⏭️ `pnpm -w lint:no-raw-sql` — needs installed dependencies/);
   assert.doesNotMatch(out.markdown, /!\[demo\]/);
   assert.doesNotMatch(out.markdown, /## What to look at/);
   // The summary must stop at the next heading, not swallow the run log.
   assert.doesNotMatch(out.markdown, /node --test: 164 pass/);
 });
 
-test('a technical deliverable admits when the agent report is gone', () => {
-  const out = deliverable({ idea: { ...featureIdea, kind: 'technical' }, stages: featureStages, reportText: null, at: AT });
+test('a chore with no PRD borrows the reason it was skipped for its Why section', () => {
+  const out = deliverable({
+    idea: { ...featureIdea, kind: 'chore', rationale: null, spec: null },
+    stages: { ...choreStages, prd: { skipped: true, reason: 'a chore needs no PRD — the signal that produced it is the specification' } },
+    reportText: null,
+    at: AT,
+  });
+  assert.match(out.markdown, /a chore needs no PRD/);
+  assert.doesNotMatch(out.markdown, /_No rationale was recorded\._/);
+});
+
+test('an old QA record with no mode still reads as UAT, not as checks', () => {
+  // Records written before the workflow split have no `mode` field. Reading
+  // them as "checks" would relabel four browser runs as command runs.
+  const out = deliverable({
+    idea: { ...featureIdea, kind: 'technical' },
+    stages: { ...featureStages, qa: { verdict: 'pass', demo: null, report: 'ops/pipeline/uat/idea-abc12345/uat.md' } },
+    reportText: null,
+    at: AT,
+  });
+  assert.equal(out.kind, 'chore');
+  assert.match(out.markdown, /- UAT: pass$/m);
+  assert.doesNotMatch(out.markdown, /## Checks/);
+});
+
+test('a chore deliverable admits when the agent report is gone', () => {
+  const out = deliverable({ idea: { ...featureIdea, kind: 'technical' }, stages: choreStages, reportText: null, at: AT });
   assert.equal(out.summary, null);
   assert.match(out.markdown, /_The agent report was missing or unreadable\._/);
 });

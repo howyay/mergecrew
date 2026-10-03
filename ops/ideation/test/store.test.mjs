@@ -178,6 +178,24 @@ test('addMany marks new cards as supported', async (t) => {
   assert.equal((await store.get('x')).stale, false, 'a card born from this cycle is supported by definition');
 });
 
+test('a card a person proposed does not expire when the generator cannot re-propose it', async (t) => {
+  const { dir, store } = await tmpStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+
+  await store.addMany([
+    { id: 'human1', source: 'human', fingerprint: 'human:clean-up-the-queue-runner', status: 'pending', band: 'should' },
+    { id: 'gen1', source: 'todo-cluster', fingerprint: 'todo-cluster:tidy', status: 'pending', band: 'should' },
+  ]);
+
+  // A cycle runs and generates its own cards: neither of these is in the set,
+  // because the generator has no way to re-derive somebody's own proposal.
+  const res = await store.markStaleness(['ci-missing:something-else']);
+  assert.equal(res.marked, 1, 'only the generated card lost its backing');
+  assert.equal((await store.get('gen1')).stale, true);
+  assert.equal((await store.get('human1')).stale, false, 'the human card is still the person\'s to swipe');
+  assert.equal((await store.stats()).stale, 1);
+});
+
 /**
  * A store constructed with the wrong argument used to read an empty deck and
  * silently persist nothing, so a caller could "save" state that never existed.
@@ -215,7 +233,7 @@ test('an older state file is read as a v2 deck, not as an empty one', async () =
   await writeFile(path.join(dir, 'ideas.json'), JSON.stringify(legacy, null, 2), 'utf8');
 
   const [read] = await store.list();
-  assert.equal(read.kind, 'technical', 'a chore is not a user-facing feature');
+  assert.equal(read.kind, 'chore', 'a chore is not a user-facing feature');
   assert.equal(read.stage, 'draft', 'a card that was never specified is still a draft');
   assert.equal(read.stale, false);
   assert.equal(read.events.length, 1);
@@ -231,7 +249,7 @@ test('an older state file is read as a v2 deck, not as an empty one', async () =
   await store.decide('idea-legacy1', 'rejected', { comment: 'not now' });
   const migrated = JSON.parse(await readFile(path.join(dir, 'ideas.json'), 'utf8'));
   assert.equal(migrated.version, STATE_VERSION);
-  assert.equal(migrated.ideas[0].kind, 'technical');
+  assert.equal(migrated.ideas[0].kind, 'chore');
   assert.equal(migrated.ideas[0].stage, 'draft');
   assert.equal(migrated.ideas[0].decision.comment, 'not now');
 });
@@ -240,7 +258,7 @@ test('kindForSource splits product work from engineering chores', () => {
   assert.equal(kindForSource('product-feature'), 'feature');
   assert.equal(kindForSource('product-in-progress'), 'feature');
   assert.equal(kindForSource('human'), 'feature');
-  assert.equal(kindForSource('todo-cluster'), 'technical');
-  assert.equal(kindForSource('fix-churn'), 'technical');
+  assert.equal(kindForSource('todo-cluster'), 'chore');
+  assert.equal(kindForSource('fix-churn'), 'chore');
   assert.equal(kindForSource(undefined), 'feature');
 });

@@ -276,16 +276,16 @@ test('a priority override is kept beside the automatic verdict', async () => {
   assert.equal((await post('/api/priority', { id: 'idea-nope', priority: 'P0' })).res.status, 404);
 });
 
-test('a person can propose an idea, and it still gets verified and scored', async () => {
+test('a person can propose a feature, and it still gets verified and scored', async () => {
   const { res, body } = await post('/api/propose', {
-    title: 'Refactor the queue runner into a job table',
-    rationale: 'on-demand: the runner state is scattered across JSON files',
-    kind: 'technical',
+    title: 'Ship: export the audit log',
+    rationale: 'on-demand: the roadmap promises an export and the API has no route for it',
+    kind: 'feature',
     by: 'haoye',
   });
   assert.equal(res.status, 201);
   assert.equal(body.idea.source, 'human');
-  assert.equal(body.idea.kind, 'technical');
+  assert.equal(body.idea.kind, 'feature');
   assert.equal(body.idea.stage, 'draft', 'a proposal is a draft until stage 2 runs');
   assert.equal(body.idea.status, 'pending', 'a proposal that is not pending is a card nobody can swipe');
 
@@ -298,4 +298,42 @@ test('a person can propose an idea, and it still gets verified and scored', asyn
   assert.equal(listed.spec.specifiedBy, 'heuristic');
   assert.ok(listed.triage.priority, 'a proposed idea is ranked like any other');
   assert.equal((await post('/api/propose', { title: '' })).res.status, 400);
+});
+
+test('a proposed chore is stored canonically and never waits for a specification', async () => {
+  // The old word for this work: the API still accepts it, and the record that
+  // comes back is a chore — otherwise a card proposed by an older client would
+  // be scheduled as product work forever.
+  const { res, body } = await post('/api/propose', {
+    title: 'Clean up the queue runner',
+    rationale: 'on-demand: the runner state is scattered across JSON files',
+    kind: 'technical',
+    by: 'haoye',
+  });
+  assert.equal(res.status, 201);
+  assert.equal(body.idea.kind, 'chore');
+
+  // The same endpoint the deck's "generate" button hits: a full specification
+  // pass runs here, and it has to walk past this card.
+  await post('/api/generate');
+
+  const { body: after } = await get('/api/ideas');
+  const listed = after.ideas.find((i) => i.id === body.idea.id);
+  assert.equal(listed.kind, 'chore');
+  assert.equal(listed.stage, 'draft', 'a chore never enters the specification ladder');
+  assert.equal(listed.spec ?? null, null);
+  assert.ok(listed.triage?.priority, 'a chore is ranked on the signal that produced it');
+  assert.equal(listed.status, 'pending');
+  assert.equal(listed.stale, false);
+  assert.equal(
+    await readFile(path.join(fixture, `ops/ideation/specs/${body.idea.id}.md`), 'utf8').catch(() => null),
+    null,
+    'no spec document may be written for a chore',
+  );
+
+  // The next word is accepted too, and rejected with a reason when it is not a kind.
+  const { res: choreRes } = await post('/api/propose', { title: 'Ship: the cheque printer', kind: 'chore' });
+  assert.equal(choreRes.status, 201);
+  const { res: badRes } = await post('/api/propose', { title: 'Ship: the cheque printer', kind: 'chores' });
+  assert.equal(badRes.status, 400);
 });

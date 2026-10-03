@@ -31,6 +31,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { scoreIdea } from './scorer.mjs';
+import { needsSpecification, normalizeKind } from './kinds.mjs';
 
 const pexec = promisify(execFile);
 
@@ -126,7 +127,7 @@ export async function verifyAgainstCode(idea, { repo, grep = grepCode } = {}) {
 export function generalize(idea) {
   const feature = String(idea.title ?? '').replace(/^(Ship|Finish):\s*/, '').trim();
   const persona = idea.persona ? `${idea.persona} ` : '';
-  const kind = idea.kind === 'technical' ? 'a technical capability' : 'a user-visible capability';
+  const kind = normalizeKind(idea.kind) === 'chore' ? 'a maintenance change' : 'a user-visible capability';
   const scope = idea.section ? ` in the "${idea.section}" area of the product` : '';
   if (idea.source === 'product-in-progress') {
     return `Finish ${feature}${scope}: ${persona}users can already do part of it, and the remaining part is not built. The work is to close the gap, not to rebuild what exists.`;
@@ -238,7 +239,7 @@ export function renderSpecMarkdown(idea, { spec, verification }) {
  * grep matched tokens), never with how good the idea sounds.
  */
 export function scoreSpecified(idea, verification, { effortHint } = {}) {
-  const baseImpact = idea.kind === 'technical' ? 26 : idea.source === 'product-in-progress' ? 28 : 34;
+  const baseImpact = normalizeKind(idea.kind) === 'chore' ? 26 : idea.source === 'product-in-progress' ? 28 : 34;
   const alreadyThere = verification?.alreadyImplemented === 'possible';
   const impact = alreadyThere ? 10 : baseImpact;
   const evidenceCount = (idea.evidence?.length ?? 0) + (verification?.evidence?.length ?? 0);
@@ -290,6 +291,16 @@ export function specPath(repo, idea) {
  * verification + score in the store, timeline event for the human.
  */
 export async function specifyIdea(idea, { repo, store, verify, at } = {}) {
+  // `specifyDue` already filters chores; this guard is for direct callers (the
+  // propose endpoint, anything a human runs by hand). A chore is defined by the
+  // signal that produced it, so a generated specification would be invention.
+  if (!needsSpecification(idea?.kind)) {
+    return {
+      spec: null,
+      verification: null,
+      skipped: `a ${normalizeKind(idea?.kind)} is not specified`,
+    };
+  }
   await store.setStage(idea.id, 'specifying').catch(() => null);
   try {
     const result = await heuristicSpecify(idea, { repo, verify, at });
@@ -315,10 +326,18 @@ export async function specifyIdea(idea, { repo, store, verify, at } = {}) {
 /** Specify every draft card, oldest first, up to `limit` per pass. */
 export async function specifyDue(store, { repo, limit = 3, log = () => {}, verify, at } = {}) {
   const data = await store.read();
+  // Chores are not specified, verified or scored: the signal that produced one
+  // already says what has to change, and a specification would only restate it.
+  // They also must not consume the specifier's per-pass budget, which belongs to
+  // the cards a human actually has to judge.
+  const chores = data.ideas.filter((i) => !needsSpecification(i.kind));
   const due = data.ideas
-    .filter((i) => (i.stage ?? 'draft') === 'draft' && i.status === 'pending')
+    .filter((i) => (i.stage ?? 'draft') === 'draft' && i.status === 'pending' && needsSpecification(i.kind))
     .sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))
     .slice(0, limit);
+  if (chores.length && log) {
+    log(`${chores.length} chore(s) need no specification: ${chores.map((i) => i.id).join(', ')}`);
+  }
   const done = [];
   for (const idea of due) {
     const result = await specifyIdea(idea, { repo, store, verify, at });

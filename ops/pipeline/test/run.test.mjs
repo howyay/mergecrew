@@ -348,11 +348,11 @@ test('the deliver stage writes the artifact the review gate opens on', async () 
   }
 });
 
-test('a technical card gets a changelog, not a demo it never made', async () => {
-  const { repo, dir, store } = await cardAwaitingDeliverable({ title: 'Split the session store', kind: 'technical' });
+test('a chore gets a changelog, not a demo it never made', async () => {
+  const { repo, dir, store } = await cardAwaitingDeliverable({ title: 'Split the session store', kind: 'chore' });
   try {
     const out = await advanceIdea(await store.get('shipped'), { store, repo, onlyStage: 'deliver' });
-    assert.equal(out.kind, 'technical');
+    assert.equal(out.kind, 'chore');
 
     const markdown = await readFile(path.join(repo, 'ops/pipeline/deliver/shipped.md'), 'utf8');
     assert.match(markdown, /^# Changelog: Split the session store$/m);
@@ -446,6 +446,115 @@ test('an idea run that does nothing says why, instead of logging an empty file',
     });
     assert.match(out.stdout, /nothing to do for held/);
     assert.equal(existsSync(path.join(repo, 'ops/pipeline/uat/held')), false);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The workflow the user asked for, driven through the real stages: a chore is
+ * not specified, so nothing can write it a PRD, and there is no product surface
+ * to drive with a browser. Its proof is the repository's own check list.
+ */
+test('a chore skips the PRD and proves itself with checks, not a browser', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-chore-'));
+  const { dir, store } = await storeWith([{ id: 'maint', title: 'Clean up the queue runner', kind: 'chore' }]);
+  const worktree = '.worktrees/maint';
+  try {
+    await run('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    await store.decide('maint', 'accepted');
+    await store.setPipeline('maint', { status: 'running' });
+    await mkdir(path.join(repo, 'ops/pipeline/state'), { recursive: true });
+    await writeFile(
+      path.join(repo, 'ops/pipeline/state/maint.json'),
+      JSON.stringify({ id: 'maint', status: 'running', stages: {} }, null, 2),
+      'utf8',
+    );
+
+    const prd = await advanceIdea(await store.get('maint'), { store, repo, onlyStage: 'prd' });
+    assert.equal(prd.did, 'prd');
+    assert.equal(prd.prdFile, null, 'a chore must not produce a document');
+    assert.equal(existsSync(path.join(repo, 'ops/pipeline/prd/maint.md')), false);
+
+    const afterPrd = JSON.parse(await readFile(path.join(repo, 'ops/pipeline/state/maint.json'), 'utf8'));
+    assert.equal(afterPrd.stages.prd.skipped, true);
+    assert.match(afterPrd.stages.prd.reason, /a chore needs no PRD/);
+    // The worktree still needs acceptance lines for the agent's TASK.md, and
+    // they name the oracle that will actually judge it.
+    assert.match(afterPrd.stages.prd.acceptance.join('\n'), /dependency-free check in `ops\/ci\/checks.conf`/);
+
+    // Now the dev is done and the worktree carries the repository's check list.
+    await mkdir(path.join(repo, worktree, 'ops/ci'), { recursive: true });
+    await writeFile(
+      path.join(repo, worktree, 'ops/ci/checks.conf'),
+      ['# a runnable check', 'node -e "process.exit(0)" # always green', 'pnpm -w lint:no-raw-sql'].join('\n'),
+      'utf8',
+    );
+    const stages = { ...afterPrd.stages, worktree: { status: 'created', dir: worktree }, dev: { status: 'done', commit: 'b'.repeat(40) } };
+    await writeFile(
+      path.join(repo, 'ops/pipeline/state/maint.json'),
+      JSON.stringify({ id: 'maint', status: 'running', stages }, null, 2),
+      'utf8',
+    );
+    await store.setPipeline('maint', { status: 'running', stages });
+
+    const qa = await advanceIdea(await store.get('maint'), { store, repo, onlyStage: 'qa' });
+    assert.equal(qa.did, 'qa');
+    assert.equal(qa.status, 'pass');
+
+    const record = JSON.parse(await readFile(path.join(repo, 'ops/pipeline/state/maint.json'), 'utf8'));
+    assert.equal(record.stages.qa.mode, 'checks', 'a chore is judged by commands, not by a recording');
+    assert.equal(record.stages.qa.verdict, 'pass');
+    assert.equal(record.stages.qa.results.length, 1, 'the dependency-free check ran');
+    assert.match(record.stages.qa.results[0].command, /^node -e/);
+    assert.equal(record.stages.qa.results[0].status, 'passed');
+    assert.equal(record.stages.qa.skipped.length, 1, 'the command that needs node_modules is named, not silently dropped');
+    assert.match(record.stages.qa.skipped[0].command, /lint:no-raw-sql/);
+    assert.match(record.stages.qa.skipped[0].reason, /needs installed dependencies/);
+    // No port was taken and nothing was recorded as if it had been recorded.
+    assert.equal(record.stages.qa.port, undefined);
+    assert.equal(record.stages.qa.demo, undefined);
+    assert.equal(existsSync(path.join(repo, 'ops/pipeline/uat/maint')), false);
+
+    // And the deck reads it back with the checks wording.
+    const status = pipelineStatusFor(record.stages);
+    assert.equal(status.status, 'running');
+    assert.match(status.reason, /checks? passed/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('checks that could not run block the card instead of passing it', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-chore-unverified-'));
+  const { dir, store } = await storeWith([{ id: 'maint', title: 'Clean up', kind: 'chore' }]);
+  const worktree = '.worktrees/maint';
+  try {
+    await run('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    await store.decide('maint', 'accepted');
+    // A worktree with nothing but dependency-installing checks: nothing here can
+    // prove the branch, and "0 checks ran" must not read as a pass.
+    await mkdir(path.join(repo, worktree, 'ops/ci'), { recursive: true });
+    await writeFile(path.join(repo, worktree, 'ops/ci/checks.conf'), 'pnpm --filter @mergecrew/web exec tsc --noEmit\n', 'utf8');
+    const stages = { worktree: { status: 'created', dir: worktree }, dev: { status: 'done' } };
+    await mkdir(path.join(repo, 'ops/pipeline/state'), { recursive: true });
+    await writeFile(path.join(repo, 'ops/pipeline/state/maint.json'), JSON.stringify({ id: 'maint', status: 'running', stages }, null, 2), 'utf8');
+    await store.setPipeline('maint', { status: 'running', stages });
+
+    const qa = await advanceIdea(await store.get('maint'), { store, repo, onlyStage: 'qa' });
+    assert.equal(qa.status, 'not-run');
+
+    const record = JSON.parse(await readFile(path.join(repo, 'ops/pipeline/state/maint.json'), 'utf8'));
+    assert.equal(record.stages.qa.verdict, 'not-run');
+    assert.match(record.stages.qa.reason, /unverified, not verified/);
+    assert.equal(record.stages.qa.results.length, 0);
+    assert.equal(record.stages.qa.skipped.length, 1);
+
+    const status = pipelineStatusFor(record.stages);
+    assert.equal(status.status, 'blocked');
+    assert.match(status.reason, /nothing verified this branch/);
   } finally {
     await rm(repo, { recursive: true, force: true });
     await rm(dir, { recursive: true, force: true });

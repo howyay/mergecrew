@@ -11,11 +11,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dispatchAccepted, dispatchIdea, executorEnabled, reconcileExecutions } from './lib/executor.mjs';
 import { resolveSources } from './lib/generator.mjs';
+import { KIND_INPUTS, needsSpecification, normalizeKind } from './lib/kinds.mjs';
 import { scoreIdea } from './lib/scorer.mjs';
 import { runIdeationCycle } from './lib/pipeline.mjs';
 import { specifierMode, specifyDue } from './lib/specifier.mjs';
 import { IdeaStore } from './lib/store.mjs';
-import { PRIORITIES, overrideTriage, queueOrder, triageIdea } from './lib/triage.mjs';
+import { PRIORITIES, choreTriage, overrideTriage, queueOrder, triageIdea } from './lib/triage.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = process.env.MERGECREW_REPO ?? path.resolve(HERE, '..', '..');
@@ -134,21 +135,28 @@ function cycle(reason) {
  * Triage re-runs on every prepared card, because it depends on the score the
  * specification produced — ranking before specifying would order the queue by
  * a number the specifier is about to replace.
+ *
+ * A chore never reaches the specifier, so it is triaged straight from its
+ * signal; otherwise the deck would order it by the empty score it will always
+ * have, and a red build would queue behind a TODO cluster.
  */
 async function prepare(reason) {
-  if (SPECIFIER === 'off') return { specified: [], ranked: 0, skipped: 'specifier off' };
-  const specified = await specifyDue(store, { repo: REPO, limit: SPEC_PER_PASS, log });
+  const specified =
+    SPECIFIER === 'off' ? [] : await specifyDue(store, { repo: REPO, limit: SPEC_PER_PASS, log });
   const data = await store.read();
   let ranked = 0;
   for (const idea of data.ideas) {
-    if (idea.status !== 'pending' || (idea.stage ?? 'draft') !== 'specified') continue;
-    await store.setTriage(idea.id, triageIdea(idea));
+    if (idea.status !== 'pending') continue;
+    const stage = idea.stage ?? 'draft';
+    if (stage === 'specified') await store.setTriage(idea.id, triageIdea(idea));
+    else if (stage === 'draft' && !needsSpecification(idea.kind)) await store.setTriage(idea.id, choreTriage(idea));
+    else continue;
     ranked += 1;
   }
   if (specified.length || ranked) {
     log(`prepare (${reason}): specified ${specified.filter((s) => s.ok).length}/${specified.length}, ranked ${ranked}`);
   }
-  return { specified, ranked };
+  return { specified, ranked, ...(SPECIFIER === 'off' ? { skipped: 'specifier off' } : {}) };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -252,19 +260,19 @@ const server = http.createServer(async (req, res) => {
 
     // Stage 2's human door: a person asks for something by name.
     //
-    // Ideas from /api/propose are not exempt from the machine gate: the
-    // specifier still verifies them against the code and scores them, which is
-    // how "the human asked for it" and "the human is right about it" stay
-    // different claims.
+    // Ideas from /api/propose are not exempt from the machine gate: a feature or
+    // a refactor is still verified against the code and scored, which is how
+    // "the human asked for it" and "the human is right about it" stay different
+    // claims. A chore is the exception the workflow table already makes — there
+    // is nothing to verify, so it goes to the deck ranked and un-specified.
     if (req.method === 'POST' && url.pathname === '/api/propose') {
       const body = await readBody(req);
       const { title, rationale, kind, persona, by, evidence, spec } = body;
       if (typeof title !== 'string' || !title.trim() || title.length > 160) {
         return json(res, 400, { error: 'expected {title: string (1-160 chars), rationale?, kind?, persona?, spec?}' });
       }
-      const types = ['feature', 'technical', 'refactor'];
-      if (kind !== undefined && !types.includes(kind)) {
-        return json(res, 400, { error: `kind must be one of ${types.join('|')}` });
+      if (kind !== undefined && !KIND_INPUTS.includes(String(kind).trim().toLowerCase())) {
+        return json(res, 400, { error: `kind must be one of ${KIND_INPUTS.join('|')}` });
       }
       const who = typeof by === 'string' && by ? by : 'human';
       const features = { impact: 32, confidence: 10, effort: 13, risk: 12 };
@@ -275,7 +283,7 @@ const server = http.createServer(async (req, res) => {
         rationale: typeof rationale === 'string' && rationale.trim() ? rationale.trim().slice(0, 1200) : `Proposed by ${who}.`,
         evidence: Array.isArray(evidence) && evidence.length ? evidence.slice(0, 8).map(String) : [`proposed by: ${who}`],
         effortHint: 'medium',
-        kind: kind ?? 'feature',
+        kind: normalizeKind(kind ?? 'feature'),
         persona: typeof persona === 'string' && persona ? persona : null,
         features,
         // The same shape the generator produces, so every downstream stage sees

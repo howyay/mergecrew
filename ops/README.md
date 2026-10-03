@@ -367,12 +367,12 @@ as it honestly can. Stages, in order:
 
 | # | Stage | Writes | Stops when |
 |---|-------|--------|-----------|
-| 1 | `prd` | `ops/pipeline/prd/<id>.md` | — (deterministic, from the idea + its specification) |
+| 1 | `prd` | `ops/pipeline/prd/<id>.md` | — (deterministic, from the idea + its specification). **A chore skips this**: it records `{skipped: true, reason, acceptance}` and no file |
 | 2 | `issue` | Forgejo/GitHub issue, else `ops/pipeline/issues/<id>.md` | no token → local file, the card says so |
 | 3 | `worktree` | `.worktrees/<id>` on `idea/<id>-<slug>` | git refuses |
 | 4 | `dev` | `TASK.md` + `PRD.md` in the worktree, one agent per feature; then the pipeline commits the tree on the idea branch | agent exits without `AGENT_REPORT.md` |
-| 5 | `qa` | `ops/pipeline/uat/<id>/{uat.md,index.html,demo.png}` | a strict check fails |
-| 6 | `deliver` | `ops/pipeline/deliver/<id>.md` — a demo for a user-facing change, a changelog entry for a technical one | — (rendered from the records above) |
+| 5 | `qa` | A `feature`: `ops/pipeline/uat/<id>/{uat.md,index.html,demo.png}`. A `chore`/`refactor`: check results in the per-idea record, under the worktree's `ops/ci/checks.conf` | a strict check fails |
+| 6 | `deliver` | `ops/pipeline/deliver/<id>.md` — a demo for a user-facing change, a changelog entry for a chore or a refactor | — (rendered from the records above) |
 | 7 | `review` | the human verdict, consumed from the deck | always waits for a person |
 
 The gate itself is the swipe: `accept` puts a card in the queue, and the dev
@@ -388,15 +388,49 @@ inline wait: the sweep starts `node run.mjs --idea <id> --stage qa` detached,
 records its pid and log, and reads the verdict back from the per-idea record, so
 one slow browser cannot hold up the queue. Each idea gets a deterministic CDP
 port (`qaPort`, 9333 + hash) because two UATs sharing one debugging socket fail
-in a way that looks like a broken product.
+in a way that looks like a broken product — a chore's checks take no port at all,
+so nothing has to be torn down for a browser run that never happened.
+
+### Kinds: the workflow each one buys
+
+`kind` is not a label on a card, it selects the pipeline. The table lives in
+`ops/ideation/lib/kinds.mjs`; the specifier, the runner, the deliverable and the
+deck all read that one table instead of each testing `kind === 'feature'` its own
+way.
+
+| kind | specification | PRD | QA oracle | deliverable |
+|------|---------------|-----|-----------|-------------|
+| `feature` | full — spec document, code verification, rescore | yes | browser UAT + recording | demo (the recording, embedded) |
+| `refactor` | full | yes | the check list | changelog |
+| `chore` | **none** | **no** | the check list | changelog |
+
+**A chore is maintenance work that came from a signal, not from a promise**:
+`ci-failure`, `ci-missing`, `disabled-check`, `deploy-hook`, `untested-area`,
+`todo-cluster`, `backlog`, `fix-churn`. It is not specified, so there is nothing
+to verify and nothing to score — it is ranked on the signal that produced it
+(`choreTriage`, which puts a red build at P0 and housekeeping at P3) and it can be
+swiped straight off the deck while it is still a draft. It gets no PRD, because
+the finding *is* the specification, and it gets no browser, because there is no
+product surface to drive: its QA **runs the repository's own check list**
+(`ops/ci/checks.conf`) inside the worktree and records `mode: 'checks'` with each
+command's exit code and output. A check that needs `node_modules` (a fresh
+worktree has none) is recorded as **skipped** rather than quietly dropped, and a
+run in which nothing could execute is `verdict: 'not-run'` — the card is
+*blocked*, never passed. The deck renders that as a `Checks` row where a feature
+shows `UAT`, and a `Changelog` where a feature shows a `Deliverable`.
+
+`technical` was the old word for a chore. Nothing has to be migrated by hand: it
+is resolved to `chore` at every boundary it can still appear on — a state file
+written before the split, a delivered artifact, the `POST /api/ideas/propose`
+API, a hand-edited record in any capitalisation.
 
 **The deliverable depends on who the change is for.** A `feature` gets a demo —
 the recording QA just made, embedded, with the acceptance criteria as checkboxes
 the human ticks — plus a line saying the UAT drives the product surface and does
-not assert that list. A `technical` change (a refactor, a change with no user
-surface) gets a changelog entry: what moved, why, and what proved it. A missing
-recording stays labelled missing; nothing here renders a claim the earlier
-stages did not write down.
+not assert that list. A chore or a refactor gets a changelog entry: what moved,
+why, and which checks proved it (with the skipped ones named). A missing
+recording stays labelled missing; nothing here renders a claim the earlier stages
+did not write down.
 
 
 Run one stage by hand, or one idea:

@@ -23,6 +23,7 @@
  * that produced it, and `source` names the rule that fired.
  */
 import { createHash } from 'node:crypto';
+import { normalizeKind } from './kinds.mjs';
 import { productIdeas } from './product.mjs';
 import { scoreFromIdea, scoreIdea } from './scorer.mjs';
 
@@ -254,7 +255,7 @@ export async function llmIdeas(signals, { limit = 12, timeoutMs = 60_000, fetchI
         evidence: Array.isArray(i.evidence) ? i.evidence.map((e) => String(e).slice(0, 200)).slice(0, 6) : [],
         effortHint: ['small', 'medium', 'large'].includes(i.effortHint) ? i.effortHint : 'medium',
         features: i.features,
-        kind: ['feature', 'technical'].includes(i.kind) ? i.kind : 'feature',
+        kind: normalizeKind(i.kind),
         persona: typeof i.persona === 'string' && i.persona.trim() ? i.persona.trim().slice(0, 80) : null,
         section: null,
       }),

@@ -5,6 +5,10 @@
  * answers "before or after what" — which the dev queue needs, because a deck of
  * twelve equally-scored cards is not a plan.
  *
+ * A chore is not specified or scored, so it is ranked from the signal that
+ * produced it instead (`choreTriage` below): a red build and a TODO cluster must
+ * not land in the same place just because neither has a rubric score.
+ *
  * The mapping is deterministic and explainable, and every reason is a sentence
  * a human can argue with:
  *
@@ -61,8 +65,48 @@ export function triageIdea(idea, { at = new Date().toISOString() } = {}) {
   return triage;
 }
 
-/** Apply a human's priority override, keeping the automatic verdict beside it. */
-export function overrideTriage(idea, { priority, reason = null, by = 'human', at = new Date().toISOString() } = {}) {
+/**
+ * Triage for a chore: the same queue position, from a different input.
+ *
+ * A chore is never scored against the product rubric and is never verified —
+ * it *is* the finding (`ops/ideation/lib/kinds.mjs`). Its urgency is therefore
+ * the signal that produced it, and that mapping is written down rather than
+ * inferred from an empty score, which would have filed a red build under the
+ * same "wont" as a TODO cluster.
+ */
+const CHORE_PRIORITY = {
+  'ci-failure': ['P0', 'The build is red: this is the one chore that stops everything else.'],
+  'disabled-check': ['P1', 'A check is switched off, so the suite is quieter than it looks.'],
+  'deploy-hook': ['P1', 'The delivery path has a hole in it, and the next deploy would not be caught.'],
+  'ci-missing': ['P2', 'No automation covers this yet, so it costs more every time it regresses.'],
+  'untested-area': ['P2', 'Nothing exercises this area, so every change to it is a guess.'],
+  'fix-churn': ['P2', 'This keeps breaking; the maintenance is overdue rather than optional.'],
+  'todo-cluster': ['P3', 'Housekeeping: worth doing, but it should not displace a real row.'],
+  backlog: ['P3', 'Housekeeping: worth doing, but it should not displace a real row.'],
+};
+
+export function choreTriage(idea, { at = new Date().toISOString() } = {}) {
+  const [priority, why] = CHORE_PRIORITY[idea.source] ?? [
+    'P2',
+    'Maintenance work with no product score: ranked on the signal that produced it.',
+  ];
+  const score = Number(idea.score) || 0;
+  const triage = {
+    priority,
+    rank: rankFor(priority, score),
+    reason: `${why} (\`${idea.source ?? 'unknown'}\` chore, no specification: nothing to score.)`,
+    triagedAt: at,
+    override: null,
+  };
+  if (idea.triage?.override) {
+    triage.override = idea.triage.override;
+    triage.priority = idea.triage.override.priority;
+    triage.rank = rankFor(triage.priority, score);
+  }
+  return triage;
+}
+
+/** Apply a human's priority override, keeping the automatic verdict beside it. */export function overrideTriage(idea, { priority, reason = null, by = 'human', at = new Date().toISOString() } = {}) {
   if (!PRIORITIES.includes(priority)) throw new Error(`unknown priority "${priority}" (expected ${PRIORITIES.join('|')})`);
   const automatic = { priority: idea.triage?.priority, reason: idea.triage?.reason ?? null };
   return {

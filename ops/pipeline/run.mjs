@@ -29,9 +29,11 @@ import path from 'node:path';
 
 import { agentReport, commitWorktree, createWorktree, seedWorktree, worktreePath } from './lib/worktree.mjs';
 import { classifyAgentFailure, readAgentLog, sessionFromLog, spawnDevAgent } from './lib/agent.mjs';
+import { needsDependencies, readChecks, runChecks } from './lib/checks.mjs';
 import { deliverPath, deliverable, readAgentReport } from './lib/deliver.mjs';
 import { beat, clearStage, logLine, readHeartbeat, readIdeaPipeline, recordStage, writeIdeaPipeline } from './lib/state.mjs';
 import { IdeaStore } from '../ideation/lib/store.mjs';
+import { needsPrd, normalizeKind, qaModeFor, workflowFor } from '../ideation/lib/kinds.mjs';
 import { queueOrder } from '../ideation/lib/triage.mjs';
 
 const REPO = process.env.MERGECREW_REPO ?? path.resolve(new URL('../..', import.meta.url).pathname);
@@ -69,12 +71,25 @@ export function pipelineStatusFor(stages = {}, { maxAttempts = MAX_STAGE_ATTEMPT
     return { status: 'blocked', reason: `human rejected the delivered work${review.note ? `: ${review.note}` : ''}` };
   }
   if (qa) {
-    // A UAT job that is still driving the browser has no verdict yet; without
+    // A chore or a refactor is judged by the repository's own checks, a feature
+    // by a recorded browser run. Both are QA; the wording is what tells the
+    // human at the review gate which oracle actually ran.
+    const checks = qa.mode === 'checks';
+    // A QA job that is still driving the browser has no verdict yet; without
     // this branch it would read as "no verdict" and park the card for review.
-    if (qa.status === 'running') return { status: 'running', reason: 'the UAT job is still running' };
-    if (qa.verdict === 'fail') return { status: 'blocked', reason: `UAT failed: ${qa.reason ?? 'see the report'}` };
+    if (qa.status === 'running') {
+      return { status: 'running', reason: checks ? 'the checks are still running' : 'the UAT job is still running' };
+    }
+    if (qa.verdict === 'fail') {
+      return { status: 'blocked', reason: `${checks ? 'checks' : 'UAT'} failed: ${qa.reason ?? 'see the report'}` };
+    }
+    if (qa.verdict === 'not-run') {
+      return { status: 'blocked', reason: `nothing verified this branch: ${qa.reason ?? 'no check could run'}` };
+    }
     if (qa.verdict === 'blocked') return { status: 'blocked', reason: `UAT could not run: ${qa.reason ?? 'unknown'}` };
-    if (!stages.deliver) return { status: 'running', reason: 'UAT passed; the deliverable is next' };
+    if (!stages.deliver) {
+      return { status: 'running', reason: checks ? 'the checks passed; the deliverable is next' : 'UAT passed; the deliverable is next' };
+    }
     return { status: 'awaiting-review', reason: 'the deliverable is ready; waiting for a human verdict' };
   }
   if (dev) {
@@ -194,6 +209,25 @@ const isAlive = (pid) => {
 };
 
 /**
+ * What the dev agent is told to run before it reports done.
+ *
+ * A checks-mode card (a chore, a refactor) is judged by `ops/ci/checks.conf`, so
+ * the task file names those commands instead of the repo-wide test glob — and
+ * only the dependency-free ones, because a worktree is a fresh checkout without
+ * `node_modules`: a command that cannot run there is noise in a document the
+ * agent is meant to follow literally.
+ *
+ * `undefined` keeps the seeded default for a feature, whose oracle is its own
+ * suite plus the repo-wide glob.
+ */
+async function verifyCommandsFor(idea) {
+  if (qaModeFor(idea.kind) !== 'checks') return undefined;
+  const commands = await readChecks(REPO);
+  const runnable = commands.filter((command) => !needsDependencies(command));
+  return runnable.length ? runnable : undefined;
+}
+
+/**
  * Advance one idea as far as its artefacts allow. Returns the stage it stopped
  * at plus a one-line reason, which is what the sweep logs and the review page
  * shows.
@@ -237,6 +271,29 @@ export async function advanceIdea(
 
   // 1. PRD -------------------------------------------------------------------
   if (!stages.prd && (!onlyStage || onlyStage === 'prd')) {
+    if (!needsPrd(idea.kind)) {
+      // A chore gets no PRD, on purpose: a document restating "the build is red"
+      // costs a model call and gives the human a second thing to read. The stage
+      // record stays (every later stage looks for it, and the deck reads it), so
+      // it says *why* it is empty and carries the acceptance list instead.
+      const { choreAcceptance } = await load('./lib/prd.mjs');
+      const acceptance = choreAcceptance(idea);
+      const prd = {
+        skipped: true,
+        reason: `a ${normalizeKind(idea.kind)} needs no PRD — the signal that produced it is the specification`,
+        acceptance,
+        at: new Date().toISOString(),
+      };
+      await recordStage(repo, idea.id, 'prd', prd);
+      await writeIdeaPipeline(repo, idea.id, {
+        status: 'running',
+        startedAt: record.startedAt ?? new Date().toISOString(),
+        stages: { ...stages, prd },
+      });
+      await store.setPipeline(idea.id, { status: 'running', prd, updatedAt: new Date().toISOString() });
+      emit(`no prd for ${idea.id}: ${normalizeKind(idea.kind)} (${acceptance.length} acceptance line(s), no document)`);
+      return { ...out, did: 'prd', stage: 'prd', prdFile: null, prdSkipped: true };
+    }
     const { buildPrd, writePrd, acceptanceFor } = await load('./lib/prd.mjs');
     const signals = await readGenerationSignals(repo);
     const prd = buildPrd(idea, { repo, signals });
@@ -285,7 +342,7 @@ export async function advanceIdea(
       await store.setPipeline(idea.id, { status: 'blocked', worktree: created, updatedAt: new Date().toISOString() });
       return { ...out, did: 'worktree', stage: 'worktree', status: 'blocked', reason: created.reason };
     }
-    const seeded = await seedWorktree({ dir: created.dir, idea, prd: prdBody, acceptance });
+    const seeded = await seedWorktree({ dir: created.dir, idea, prd: prdBody, acceptance, verifyCommands: await verifyCommandsFor(idea) });
     const worktree = { ...created, dir: path.relative(repo, created.dir), taskFile: path.relative(repo, seeded.taskFile) };
     await recordStage(repo, idea.id, 'worktree', worktree);
     await writeIdeaPipeline(repo, idea.id, { stages: { ...(await readIdeaPipeline(repo, idea.id)).stages, worktree } });
@@ -385,11 +442,18 @@ export async function advanceIdea(
     return { ...out, did: 'dev', stage: 'dev', status: started.status };
   }
 
-  // 5. QA: autonomous UAT + demo recording -----------------------------------
+  // 5. QA: what judges this change depends on what the change is -------------
+  //   feature   → a recorded browser run against the real product
+  //   chore     → the repository's own checks (no screen to drive, no demo to
+  //               record: a chore *is* the finding, not a product surface)
+  //   refactor  → the checks as well: behaviour is meant to be unchanged, so the
+  //                only honest evidence is the suite that pins it
   // The gate is normally "the agent reported done". --force-qa is the operator
-  // asking for the UAT right now (to see a demo of the current state, or to
-  // re-record after a UI change); it does not change what the checks assert,
-  // and the record says who ran it.
+  // asking for QA right now (to see a demo of the current state, or to re-record
+  // after a UI change); it does not change what the checks assert, and the
+  // record says who ran it.
+  const workflow = workflowFor(idea.kind);
+  const checksMode = workflow.qa === 'checks';
   const qaReady = stages.dev?.status === 'done' || (forceQa && Boolean(stages.dev));
   // `--stage qa` is what the job below runs: it is the one caller that must run
   // the browser in-process, because it *is* the process. A sweep only starts
@@ -415,21 +479,24 @@ export async function advanceIdea(
       ...stages.qa,
       status: 'failed',
       endedAt: new Date().toISOString(),
-      reason: 'the UAT job exited without writing a verdict',
+      reason: `the ${checksMode ? 'checks job' : 'UAT job'} exited without writing a verdict`,
       logTail: tail.slice(-1200),
     };
     await recordStage(repo, idea.id, 'qa', qa);
     await store.setPipeline(idea.id, { qa, status: 'blocked', reason: qa.reason, updatedAt: new Date().toISOString() });
-    emit(`UAT job for ${idea.id} died — ${qa.reason} (see ${stages.qa.logFile})`);
+    emit(`QA job for ${idea.id} died — ${qa.reason} (see ${stages.qa.logFile})`);
     return { ...out, did: 'qa', stage: 'qa', status: 'blocked', reason: qa.reason };
   }
 
   if ((!stages.qa || qaOwnedByMe) && qaReady && (!onlyStage || onlyStage === 'qa')) {
-    const port = Number(process.env.PIPELINE_QA_PORT) || qaPort(idea.id);
+    // A port is only meaningful for a browser run; a checks job must not hold one
+    // (it would look like a recording that never happened).
+    const port = checksMode ? null : Number(process.env.PIPELINE_QA_PORT) || qaPort(idea.id);
     const source = forceQa && stages.dev?.status !== 'done' ? 'manual' : 'pipeline';
     if (!qaInline) {
       const job = await spawnQaJob({ repo, idea, url, port, log: emit });
       const qa = {
+        mode: checksMode ? 'checks' : 'uat',
         status: 'running',
         pid: job.pid,
         logFile: path.relative(repo, job.logFile),
@@ -440,14 +507,31 @@ export async function advanceIdea(
       };
       await recordStage(repo, idea.id, 'qa', qa);
       await store.setPipeline(idea.id, { qa, updatedAt: new Date().toISOString() });
-      emit(`UAT job for ${idea.id} started (pid ${job.pid}, cdp ${port}, log ${qa.logFile})`);
+      emit(
+        checksMode
+          ? `checks job for ${idea.id} started (pid ${job.pid}, log ${qa.logFile})`
+          : `UAT job for ${idea.id} started (pid ${job.pid}, cdp ${port}, log ${qa.logFile})`,
+      );
       return { ...out, did: 'qa', stage: 'qa', status: 'qa-started', port };
+    }
+
+    const acceptance = stages.prd?.acceptance ?? [];
+
+    if (checksMode) {
+      // The worktree is where the branch lives, so it is what the checks judge:
+      // running them against the operator's checkout would grade main.
+      const dir = path.join(repo, worktreeRel ?? worktreePath(repo, idea.id));
+      const result = await runChecks({ dir, log: emit });
+      const qa = { ...result, source, devStatus: stages.dev?.status ?? null, acceptance, acceptanceChecked: false };
+      await recordStage(repo, idea.id, 'qa', qa);
+      await store.setPipeline(idea.id, { qa, updatedAt: new Date().toISOString() });
+      emit(`checks for ${idea.id}: ${qa.verdict} (${qa.results.length} ran, ${qa.skipped.length} skipped)`);
+      return { ...out, did: 'qa', stage: 'qa', status: qa.verdict, checks: qa.results, skipped: qa.skipped };
     }
 
     const { runUat, uatMarkdown } = await load('./lib/uat.mjs');
     const outDir = path.join(repo, 'ops/pipeline/uat', idea.id);
     await mkdir(outDir, { recursive: true });
-    const acceptance = stages.prd?.acceptance ?? [];
     // Every step here is a real requirement, so none of them are optional: the
     // recorder has no `optional` semantics on purpose (a step that may fail
     // silently is a step that verifies nothing), and a QA gate that waves a
@@ -461,6 +545,10 @@ export async function advanceIdea(
     const result = await runUat({ idea, url, outDir, steps, acceptance, port, log: emit });
     const reportFile = path.join(outDir, 'uat.md');
     const uat = {
+      // Which oracle ran. The record has to say it itself: a reader (and the
+      // deck) must not have to infer "checks or browser" from the idea's kind,
+      // which can be re-classified after the fact.
+      mode: 'uat',
       // The stage is over; the verdict says how it went. Without this the record
       // keeps the `running` the sweep wrote when it spawned the job, and a
       // finished UAT then reads as "still driving the browser" forever.
@@ -547,6 +635,9 @@ export async function advanceIdea(
       provider: stages.dev?.provider ?? null,
       commit: stages.dev?.commit ?? null,
       qa: stages.qa?.verdict ?? null,
+      // Which oracle produced that verdict — "pass" alone does not say whether a
+      // browser drove the product or the check list ran in the worktree.
+      qaMode: stages.qa?.mode === 'checks' ? 'checks' : 'uat',
       demo: stages.qa?.demo ?? null,
       deliverable: stages.deliver?.file ?? null,
       deliverKind: stages.deliver?.kind ?? null,
@@ -572,8 +663,8 @@ export async function advanceIdea(
     });
     emit(
       decided
-        ? `${idea.id} review ${human.decision} by ${human.by ?? 'human'} (${summary.qa} UAT, branch ${summary.worktree ?? 'none'})`
-        : `${idea.id} is awaiting human review (${summary.qa} UAT, demo ${summary.demo ?? 'none'})`,
+        ? `${idea.id} review ${human.decision} by ${human.by ?? 'human'} (${summary.qa} ${summary.qaMode}, branch ${summary.worktree ?? 'none'})`
+        : `${idea.id} is awaiting human review (${summary.qa} ${summary.qaMode}${summary.demo ? `, demo ${summary.demo}` : ''})`,
     );
     return { ...out, did: 'review', stage: 'review', status: summary.status };
   }

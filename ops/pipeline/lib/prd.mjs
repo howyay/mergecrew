@@ -280,6 +280,26 @@ export function acceptanceFor(idea) {
   return entries;
 }
 
+/**
+ * Acceptance for a chore, which has no rubric to preserve.
+ *
+ * A chore *is* the finding: the signal that produced it (a red build, an
+ * untested area, a TODO cluster) already says what has to change, so there is
+ * nothing for a PRD to decide and no product surface for a browser to drive —
+ * see `ops/ideation/lib/kinds.mjs`, which is what removes those stages.
+ *
+ * What the dev agent still needs is what every task needs: the evidence to
+ * settle, and the name of the oracle that will judge it. That oracle is the
+ * repository's own check list, because that is what QA runs for a chore.
+ */
+export function choreAcceptance(idea) {
+  return [
+    'The change is in the worktree, committed, and touches only what this chore named.',
+    ...evidenceLines(idea).map((line) => `Evidence resolved: ${line}`),
+    'Every dependency-free check in `ops/ci/checks.conf` passes in the worktree.',
+  ];
+}
+
 /** Stored `scoreReasons` when present, otherwise derived from the raw features. */
 function rubricReasons(idea) {
   const stored = Array.isArray(idea?.scoreReasons)
