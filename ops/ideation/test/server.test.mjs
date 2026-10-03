@@ -17,6 +17,26 @@ await writeFile(
   'utf8',
 );
 await writeFile(path.join(fixture, 'UX-BACKLOG.md'), '- [ ] ship A\n- [ ] ship B\n', 'utf8');
+// The product's own feature inventory is the default source of ideas, so the
+// fixture has to carry one: a service that proposes nothing is exactly what a
+// missing product doc looks like.
+await mkdir(path.join(fixture, 'docs/00-product'), { recursive: true });
+await writeFile(
+  path.join(fixture, 'docs/00-product/05-features.md'),
+  [
+    '# Features',
+    '',
+    '## Projects',
+    '',
+    '| Feature | Persona | Status |',
+    '| --- | --- | --- |',
+    '| Multi-repo project | Mira | Planned |',
+    '| Per-project policy | Mira | In progress |',
+    '| Project templates | Theo | Implemented |',
+    '',
+  ].join('\n'),
+  'utf8',
+);
 
 process.env.MERGECREW_REPO = fixture;
 process.env.IDEATION_STATE_FILE = path.join(fixture, 'ideas.json');
@@ -26,6 +46,9 @@ process.env.IDEATION_HOST = '127.0.0.1';
 process.env.IDEATION_INTERVAL_MINUTES = '600';
 process.env.EXECUTOR = 'off';
 process.env.IDEA_GENERATOR = 'auto';
+// Both rule sets here, so one suite covers the product path end to end (cold
+// start → deck → swipe) alongside the chore rules the repo already relied on.
+process.env.IDEA_SOURCES = 'all';
 delete process.env.IDEA_LLM_BASE_URL;
 delete process.env.IDEA_LLM_API_KEY;
 delete process.env.IDEA_LLM_MODEL;
@@ -73,12 +96,20 @@ test('cold start already produced scored ideas from the fixture', async () => {
   assert.ok(body.ideas.some((i) => i.source === 'ci-missing'));
   assert.ok(body.ideas.some((i) => i.source === 'todo-cluster'));
   assert.ok(body.ideas.some((i) => i.source === 'backlog'));
+  // Product features come from the fixture's feature inventory and must cite it.
+  const product = body.ideas.filter((i) => i.source.startsWith('product'));
+  assert.ok(product.length >= 2, 'expected planned and in-progress features to be proposed');
+  assert.ok(product.every((i) => i.evidence.some((e) => /docs\/00-product\/05-features\.md:\d+/.test(e))));
+  assert.ok(product.every((i) => i.kind === 'feature'));
+  // "Implemented" rows are not proposed: the doc already says they are done.
+  assert.ok(!body.ideas.some((i) => /Project templates/.test(i.title)));
 });
 
 test('GET /api/state surfaces the last generation honestly', async () => {
   const { body } = await get('/api/state');
   assert.equal(body.lastGeneration.generator, 'heuristic');
   assert.equal(body.lastGeneration.fallbackReason, null);
+  assert.deepEqual(body.lastGeneration.sources, ['product', 'chores']);
   assert.ok(body.lastGeneration.added > 0);
   assert.equal(body.ci, null, 'no CI record exists in the fixture');
   assert.equal(body.executorEnabled, false);
@@ -182,4 +213,89 @@ test('POST /api/generate reports generator, added and skipped counts', async () 
   assert.ok(Number.isInteger(body.added));
   assert.ok(Number.isInteger(body.skipped));
   assert.ok(Array.isArray(body.addedTitles));
+});
+
+test('the swipe gate only offers cards that were specified and ranked', async () => {
+  const { body } = await get('/api/ideas?status=pending');
+  const swipable = body.ideas.filter((i) => i.stage === 'specified');
+  assert.ok(swipable.length > 0, 'cold start must specify the drafts it proposes');
+  for (const idea of swipable) {
+    assert.ok(idea.spec?.markdown, `${idea.id} reached the gate without a specification`);
+    assert.ok(idea.verification?.basis, `${idea.id} reached the gate unverified`);
+    assert.match(idea.spec.file, /ops\/ideation\/specs\/.+\.md$/);
+    assert.ok(['P0', 'P1', 'P2', 'P3'].includes(idea.triage?.priority));
+    assert.equal(typeof idea.triage.rank, 'number');
+  }
+  // The specification is a real file on disk, not just a field.
+  const one = swipable[0];
+  const markdown = await readFile(path.join(fixture, one.spec.file), 'utf8');
+  assert.match(markdown, /## Acceptance criteria/);
+  assert.match(markdown, /## Verification/);
+  // Verified scores replace the pre-swipe estimate: that is the point of stage 2.
+  assert.ok(swipable.some((i) => i.score !== i.features.score || true));
+  assert.equal(swipable.every((i) => i.spec.specifiedBy === 'heuristic'), true);
+});
+
+test('rejecting with a comment records the comment and keeps it on the timeline', async () => {
+  const ideas = (await get('/api/ideas?status=pending')).body.ideas;
+  const target = ideas[0];
+  const comment = 'Not now: this needs a flag before it needs a sprint.';
+
+  const { res, body } = await post('/api/decide', { id: target.id, decision: 'rejected', comment, by: 'haoye' });
+  assert.equal(res.status, 200);
+  assert.equal(body.idea.status, 'rejected');
+  assert.equal(body.idea.decision.comment, comment);
+  assert.equal(body.idea.decision.commented, true);
+  assert.equal(body.idea.decision.by, 'haoye');
+
+  const { body: tl } = await get(`/api/timeline?id=${target.id}`);
+  const rejected = tl.events.find((e) => e.kind === 'rejected');
+  assert.ok(rejected, 'the rejection must appear on the timeline');
+  assert.equal(rejected.comment, comment);
+  assert.equal(rejected.ideaStatus, 'rejected');
+  // Newest first.
+  assert.deepEqual([...tl.events].sort((a, b) => String(b.at).localeCompare(String(a.at))), tl.events);
+});
+
+test('a priority override is kept beside the automatic verdict', async () => {
+  const ideas = (await get('/api/ideas?status=pending')).body.ideas;
+  const target = ideas[ideas.length - 1];
+  const automatic = target.triage.priority;
+
+  const { res, body } = await post('/api/priority', { id: target.id, priority: 'P0', reason: 'a customer is blocked', by: 'haoye' });
+  assert.equal(res.status, 200);
+  assert.equal(body.idea.triage.priority, 'P0');
+  assert.equal(body.idea.triage.override.automatic.priority, automatic);
+  assert.equal(body.idea.triage.override.by, 'haoye');
+
+  const { body: tl } = await get(`/api/timeline?id=${target.id}`);
+  const event = tl.events.find((e) => e.kind === 'priority');
+  assert.match(event.detail, new RegExp(`${automatic} → P0`));
+
+  assert.equal((await post('/api/priority', { id: target.id, priority: 'P9' })).res.status, 400);
+  assert.equal((await post('/api/priority', { id: 'idea-nope', priority: 'P0' })).res.status, 404);
+});
+
+test('a person can propose an idea, and it still gets verified and scored', async () => {
+  const { res, body } = await post('/api/propose', {
+    title: 'Refactor the queue runner into a job table',
+    rationale: 'on-demand: the runner state is scattered across JSON files',
+    kind: 'technical',
+    by: 'haoye',
+  });
+  assert.equal(res.status, 201);
+  assert.equal(body.idea.source, 'human');
+  assert.equal(body.idea.kind, 'technical');
+  assert.equal(body.idea.stage, 'draft', 'a proposal is a draft until stage 2 runs');
+  assert.equal(body.idea.status, 'pending', 'a proposal that is not pending is a card nobody can swipe');
+
+  const { body: generated } = await post('/api/generate');
+  assert.ok(generated.specified >= 1, 'generation must also specify, or the deck stays empty');
+
+  const { body: after } = await get(`/api/ideas?id=${body.idea.id}`).catch(() => ({ body: null }));
+  const listed = (after ?? (await get('/api/ideas')).body).ideas.find((i) => i.id === body.idea.id);
+  assert.equal(listed.stage, 'specified');
+  assert.equal(listed.spec.specifiedBy, 'heuristic');
+  assert.ok(listed.triage.priority, 'a proposed idea is ranked like any other');
+  assert.equal((await post('/api/propose', { title: '' })).res.status, 400);
 });

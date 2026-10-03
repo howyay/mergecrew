@@ -54,6 +54,13 @@ export function scoreFromIdea(idea) {
   const evidence = idea.evidence?.length ?? 0;
   const source = idea.source ?? 'unknown';
   const impactBySource = {
+    // Product features are what this pipeline exists to ship: a row in the
+    // product's own inventory is a user-visible capability, not plumbing.
+    'product-feature': 34,
+    'product-in-progress': 28,
+    // A human asked for this one by hand — the strongest value signal
+    // available before the specifier has anything to say.
+    human: 32,
     'ci-failure': 36,
     'ci-missing': 24,
     'disabled-check': 22,
@@ -71,3 +78,4 @@ export function scoreFromIdea(idea) {
   const risk = source === 'todo-cluster' || source === 'ci-missing' ? 19 : source === 'ci-failure' ? 14 : 12;
   return scoreIdea({ impact, confidence, effort, risk });
 }
+

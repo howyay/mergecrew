@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateIdeas, heuristicIdeas, ideaId, llmIdeas } from '../lib/generator.mjs';
+import { generateIdeas, heuristicIdeas, ideaId, llmIdeas, resolveSources } from '../lib/generator.mjs';
 import { RUBRIC } from '../lib/scorer.mjs';
 
 const signals = (over = {}) => ({
@@ -81,13 +81,14 @@ test('generation is deterministic and respects the limit', () => {
   assert.equal(heuristicIdeas(signals(), { limit: 2 }).length, 2);
 });
 
-test('auto mode without LLM credentials uses the heuristic generator', async () => {
+test('auto mode without LLM credentials uses the deterministic rules', async () => {
   delete process.env.IDEA_LLM_BASE_URL;
   delete process.env.IDEA_LLM_API_KEY;
   delete process.env.IDEA_LLM_MODEL;
-  const result = await generateIdeas(signals(), { mode: 'auto' });
+  const result = await generateIdeas(signals(), { mode: 'auto', sources: 'chores' });
   assert.equal(result.generator, 'heuristic');
   assert.equal(result.fallbackReason, null);
+  assert.deepEqual(result.sources, ['chores']);
   assert.ok(result.ideas.length > 0);
 });
 
@@ -95,7 +96,7 @@ test('llm mode without credentials falls back and records why', async () => {
   delete process.env.IDEA_LLM_BASE_URL;
   delete process.env.IDEA_LLM_API_KEY;
   delete process.env.IDEA_LLM_MODEL;
-  const result = await generateIdeas(signals(), { mode: 'llm' });
+  const result = await generateIdeas(signals(), { mode: 'llm', sources: 'chores' });
   assert.equal(result.generator, 'heuristic');
   assert.match(result.fallbackReason, /llm failed/);
   assert.ok(result.ideas.length > 0);
@@ -140,12 +141,16 @@ test('llmIdeas parses fenced JSON and clamps over-eager features', async () => {
   delete process.env.IDEA_LLM_MODEL;
 });
 
-test('an LLM http error falls back to heuristic instead of throwing', async () => {
+test('an LLM http error falls back to the rules instead of throwing', async () => {
   process.env.IDEA_LLM_BASE_URL = 'http://llm.invalid/v1';
   process.env.IDEA_LLM_API_KEY = 'test-key';
   process.env.IDEA_LLM_MODEL = 'test-model';
 
-  const result = await generateIdeas(signals(), { mode: 'llm', fetchImpl: async () => ({ ok: false, status: 503 }) });
+  const result = await generateIdeas(signals(), {
+    mode: 'llm',
+    sources: 'chores',
+    fetchImpl: async () => ({ ok: false, status: 503 }),
+  });
   assert.equal(result.generator, 'heuristic');
   assert.match(result.fallbackReason, /llm http 503/);
   assert.ok(result.ideas.some((i) => i.source === 'ci-failure'));
@@ -154,3 +159,54 @@ test('an LLM http error falls back to heuristic instead of throwing', async () =
   delete process.env.IDEA_LLM_API_KEY;
   delete process.env.IDEA_LLM_MODEL;
 });
+
+// --- sources: what the pipeline is allowed to propose -------------------------
+
+const productSignals = (over = {}) => ({
+  ...signals(over),
+  product: {
+    file: 'docs/00-product/05-features.md',
+    sections: ['Identity & tenancy', 'Projects'],
+    rows: [
+      { file: 'docs/00-product/05-features.md', line: 14, section: 'Identity & tenancy', feature: 'SAML/SCIM SSO', persona: 'Enterprise', status: 'Planned', state: 'planned' },
+      { file: 'docs/00-product/05-features.md', line: 26, section: 'Projects', feature: 'Per-project policy', persona: 'Mira', status: 'In progress', state: 'partial' },
+      { file: 'docs/00-product/05-features.md', line: 9, section: 'Identity & tenancy', feature: 'Email + Google + GitHub OAuth', persona: 'All', status: 'Implemented', state: 'implemented' },
+    ],
+    planned: 1,
+    partial: 1,
+    implemented: 1,
+  },
+});
+
+test('the default sources propose product features, not engineering chores', async () => {
+  const result = await generateIdeas(productSignals(), { mode: 'heuristic', sources: undefined });
+  assert.deepEqual(result.sources, ['product']);
+  assert.ok(result.ideas.length > 0);
+  assert.ok(result.ideas.every((i) => i.kind === 'feature'));
+  assert.ok(result.ideas.every((i) => i.evidence.some((e) => e.includes('docs/00-product/05-features.md:'))));
+  // The chore rules would have fired on this fixture's failing CI; product-only
+  // means they must not appear.
+  assert.ok(!result.ideas.some((i) => i.source === 'ci-failure'));
+});
+
+test('idea sources are opt-in and a typo cannot silently switch them', async () => {
+  assert.deepEqual(resolveSources('chores'), ['chores']);
+  assert.deepEqual(resolveSources('all'), ['product', 'chores']);
+  assert.deepEqual(resolveSources(['product', 'chores']), ['product', 'chores']);
+  // An unrecognised token resolves to nothing rather than to everything, and the
+  // caller records that fact, so it shows up as "proposed 0" with a reason.
+  assert.deepEqual(resolveSources('chore'), []);
+
+  const result = await generateIdeas(productSignals(), { mode: 'heuristic', sources: 'chore' });
+  assert.deepEqual(result.sources, []);
+  assert.deepEqual(result.ideas, []);
+});
+
+test('source order puts product features before chores when both are enabled', async () => {
+  const result = await generateIdeas(productSignals(), { mode: 'heuristic', sources: 'all' });
+  assert.deepEqual(result.sources, ['product', 'chores']);
+  const firstChore = result.ideas.findIndex((i) => i.source === 'ci-failure');
+  const lastProduct = result.ideas.map((i) => i.source.startsWith('product')).lastIndexOf(true);
+  assert.ok(lastProduct >= 0 && firstChore > lastProduct);
+});
+

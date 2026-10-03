@@ -2,14 +2,17 @@
  * Repo signals — the raw material the idea generator thinks about.
  *
  * Everything here is local and read-only: git history, TODO/FIXME density,
- * open backlog checkboxes, and the last primitive-CI result. No network, no
- * LLM, no writes. Signals are evidence: every generated idea must cite at
- * least one, otherwise the generator is inventing work.
+ * open backlog checkboxes, the product's own feature inventory, and the last
+ * primitive-CI result. No network, no LLM, no writes. Signals are evidence:
+ * every generated idea must cite at least one, otherwise the generator is
+ * inventing work.
  */
 import { execFile } from 'node:child_process';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+
+import { scanProduct } from './product.mjs';
 
 const pexec = promisify(execFile);
 
@@ -335,7 +338,7 @@ export function deriveUntestedAreas(files) {
 }
 
 export async function collectSignals(repo) {
-  const [head, branch, logSubjects, todos, backlog, ci, ciConfig] = await Promise.all([
+  const [head, branch, logSubjects, todos, backlog, ci, ciConfig, product] = await Promise.all([
     git(repo, ['rev-parse', 'HEAD']),
     git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']),
     git(repo, ['log', '-n', '60', '--pretty=%s']),
@@ -343,6 +346,7 @@ export async function collectSignals(repo) {
     scanBacklog(repo),
     scanCi(repo),
     scanCiConfig(repo),
+    scanProduct(repo),
   ]);
 
   const subjects = logSubjects ? logSubjects.split('\n') : [];
@@ -362,5 +366,7 @@ export async function collectSignals(repo) {
     ci,
     ciConfig,
     untestedAreas,
+    // The product's own feature inventory: the default source of ideas.
+    product,
   };
 }

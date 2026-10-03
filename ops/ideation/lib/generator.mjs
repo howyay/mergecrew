@@ -1,19 +1,47 @@
 /**
  * Idea generation.
  *
- * Two modes, both honest about which one ran:
+ * Where ideas come from is a deliberate choice, not an accident of what the
+ * code can see: `IDEA_SOURCES` selects the rule sets.
+ *
+ *   product (default) — unfinished rows in the product's own feature inventory
+ *                       (docs/00-product/05-features.md). This pipeline ships
+ *                       product features; engineering chores are opt-in.
+ *   chores            — CI failures, disabled checks, TODO clusters, untested
+ *                       areas, fix churn, backlog checkboxes.
+ *   all               — both.
+ *
+ * Two engines, both honest about which one ran:
  *   heuristic (default) — deterministic rules over repo signals. No network,
  *                          no credentials, always available.
  *   llm                 — an OpenAI-compatible chat completion asked for JSON
  *                          ideas grounded in the same signals. Requires
  *                          IDEA_LLM_BASE_URL + IDEA_LLM_API_KEY + IDEA_LLM_MODEL.
- *                          Any failure falls back to heuristic and records it.
+ *                          Any failure falls back to the rules and records it.
  *
  * The generator never invents evidence: every idea carries the signal lines
  * that produced it, and `source` names the rule that fired.
  */
 import { createHash } from 'node:crypto';
+import { productIdeas } from './product.mjs';
 import { scoreFromIdea, scoreIdea } from './scorer.mjs';
+
+/** The rule sets `IDEA_SOURCES` can select. Order is the order they run in. */
+export const SOURCES = ['product', 'chores'];
+
+/**
+ * Resolve `IDEA_SOURCES` to the sets that will actually run.
+ *
+ * An unrecognised token is ignored rather than fatal (the service must still
+ * boot), which is only safe because the resolved list is recorded in every
+ * generation record and shown in the UI: a typo is visible as `sources:
+ * ["product"]` instead of silently changing what the deck proposes.
+ */
+export function resolveSources(raw = process.env.IDEA_SOURCES ?? 'product') {
+  const list = (Array.isArray(raw) ? raw : String(raw).split(',')).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+  if (list.includes('all')) return [...SOURCES];
+  return SOURCES.filter((s) => list.includes(s));
+}
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 
@@ -28,13 +56,16 @@ export function ideaId(source, title) {
   return `idea-${h}`;
 }
 
-function build({ source, title, rationale, evidence, effortHint, features }) {
+function build({ source, title, rationale, evidence, effortHint, features, kind = 'feature', persona = null, section = null }) {
   const base = { source, title, rationale, evidence, effortHint };
   const scored = features ? scoreIdea(features) : scoreFromIdea(base);
   return {
     id: ideaId(source, title),
     fingerprint: `${source}:${slug(title)}`,
     ...base,
+    kind,
+    persona,
+    section,
     features: scored.features,
     score: scored.score,
     band: scored.band,
@@ -161,15 +192,17 @@ export function heuristicIdeas(signals, { limit = 12 } = {}) {
   return out.slice(0, limit);
 }
 
-const LLM_SYSTEM = `You propose engineering ideas for a software repository.
-You receive a JSON signal bundle (git history, TODO clusters, open backlog items, last CI result).
+const LLM_SYSTEM = `You propose product features for a software product.
+You receive a JSON signal bundle: the product's own feature inventory (signals.product), git history, TODO clusters, open backlog items, the last CI result.
 Rules:
-- Propose 3 to 6 ideas. Every idea MUST cite at least one concrete string from the signals as evidence.
-- Do not propose anything the signals do not support. No invented file paths, no invented features.
-- Prefer small, verifiable changes over rewrites.
+- Propose 3 to 6 ideas for user-visible product capabilities, not code reorganisations. This pipeline ships features; refactors are only proposed when a human asks for one by hand.
+- Ground every idea in the signals: cite at least one concrete string from them as evidence (a feature-doc line, a doc section, a file path with a line number). Never invent file paths, feature names, or doc lines.
+- Prefer the smallest shippable slice of a capability over a multi-month epic.
+- Name the persona the idea serves when the product documents one.
+- A reviewer must be able to accept or reject each idea from its text alone, with no follow-up question.
 - Score each idea yourself on this rubric: impact 0-40, confidence 0-20, effort 0-20 (higher = cheaper), risk 0-20 (higher = safer).
 - Reply with JSON only, no prose, no code fences, shaped exactly:
-{"ideas":[{"title":"...","rationale":"...","evidence":["..."],"effortHint":"small|medium|large","features":{"impact":0,"confidence":0,"effort":0,"risk":0}}]}`;
+{"ideas":[{"title":"...","persona":"...","rationale":"...","evidence":["..."],"effortHint":"small|medium|large","features":{"impact":0,"confidence":0,"effort":0,"risk":0}}]}`;
 
 /** Call an OpenAI-compatible /chat/completions endpoint. Throws on any problem. */
 export async function llmIdeas(signals, { limit = 12, timeoutMs = 60_000, fetchImpl = fetch } = {}) {
@@ -221,24 +254,36 @@ export async function llmIdeas(signals, { limit = 12, timeoutMs = 60_000, fetchI
         evidence: Array.isArray(i.evidence) ? i.evidence.map((e) => String(e).slice(0, 200)).slice(0, 6) : [],
         effortHint: ['small', 'medium', 'large'].includes(i.effortHint) ? i.effortHint : 'medium',
         features: i.features,
+        kind: ['feature', 'technical'].includes(i.kind) ? i.kind : 'feature',
+        persona: typeof i.persona === 'string' && i.persona.trim() ? i.persona.trim().slice(0, 80) : null,
+        section: null,
       }),
     );
 }
 
 /**
  * Resolve the configured mode. Returns ideas plus a truthful record of which
- * generator produced them and why any fallback happened.
+ * engine and which rule sets produced them, and why any fallback happened.
+ *
+ * `sources` is recorded even when it produced nothing: a deck that stopped
+ * proposing has to be distinguishable from a repo that has nothing left.
  */
-export async function generateIdeas(signals, { mode = process.env.IDEA_GENERATOR ?? 'auto', limit = 12, fetchImpl } = {}) {
+export async function generateIdeas(signals, { mode = process.env.IDEA_GENERATOR ?? 'auto', limit = 12, sources, fetchImpl } = {}) {
+  const picked = resolveSources(sources);
+  const wanted = new Set(picked);
+  const fromRules = [];
+  if (wanted.has('product')) fromRules.push(...productIdeas(signals, { limit }));
+  if (wanted.has('chores')) fromRules.push(...heuristicIdeas(signals, { limit }));
+  const ideas = fromRules.map((d) => build(d));
+
   const wantLlm = mode === 'llm' || (mode === 'auto' && process.env.IDEA_LLM_BASE_URL && process.env.IDEA_LLM_API_KEY);
   if (wantLlm) {
     try {
-      const ideas = await llmIdeas(signals, { limit, fetchImpl });
-      return { generator: 'llm', fallbackReason: null, ideas };
+      const llm = await llmIdeas(signals, { limit, fetchImpl });
+      return { generator: 'llm', fallbackReason: null, sources: picked, ideas: [...ideas, ...llm].slice(0, limit) };
     } catch (err) {
-      const ideas = heuristicIdeas(signals, { limit });
-      return { generator: 'heuristic', fallbackReason: `llm failed: ${err?.message ?? err}`, ideas };
+      return { generator: 'heuristic', fallbackReason: `llm failed: ${err?.message ?? err}`, sources: picked, ideas };
     }
   }
-  return { generator: 'heuristic', fallbackReason: null, ideas: heuristicIdeas(signals, { limit }) };
+  return { generator: 'heuristic', fallbackReason: null, sources: picked, ideas };
 }

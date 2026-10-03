@@ -9,10 +9,10 @@
 import { generateIdeas } from './generator.mjs';
 import { collectSignals } from './signals.mjs';
 
-export async function runIdeationCycle({ repo, store, mode, limit = 12, fetchImpl, log = () => {} }) {
+export async function runIdeationCycle({ repo, store, mode, limit = 12, sources, fetchImpl, log = () => {} }) {
   const startedAt = Date.now();
   const signals = await collectSignals(repo);
-  const { generator, fallbackReason, ideas } = await generateIdeas(signals, { mode, limit, fetchImpl });
+  const { generator, fallbackReason, sources: used, ideas } = await generateIdeas(signals, { mode, limit, sources, fetchImpl });
   const { added, skipped } = await store.addMany(ideas);
 
   // A card whose evidence stopped holding must be labelled, not silently kept.
@@ -23,6 +23,9 @@ export async function runIdeationCycle({ repo, store, mode, limit = 12, fetchImp
   const meta = {
     generator,
     fallbackReason,
+    // Which rule sets ran. Recorded even when they produced nothing: "proposed
+    // 0" has to stay distinguishable from "the deck stopped working".
+    sources: used,
     head: signals.head,
     signalsAt: signals.collectedAt,
     proposed: ideas.length,
@@ -34,7 +37,8 @@ export async function runIdeationCycle({ repo, store, mode, limit = 12, fetchImp
   };
   await store.recordGeneration(meta);
   log(
-    `ideation cycle generator=${generator} proposed=${ideas.length} added=${added.length} skipped=${skipped.length} stale=+${marked}/-${cleared}`,
+    `ideation cycle generator=${generator} sources=${used.join('+') || 'none'} proposed=${ideas.length} added=${added.length} skipped=${skipped.length} stale=+${marked}/-${cleared}`,
   );
   return { ...meta, addedIdeas: added, signals };
 }
+

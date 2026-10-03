@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { IdeaStore } from '../lib/store.mjs';
+import { IdeaStore, kindForSource, STATE_VERSION } from '../lib/store.mjs';
 
 const tmpStore = async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'idea-store-'));
@@ -25,8 +25,9 @@ const idea = (over = {}) => ({
 test('read() on a missing file returns an empty, well-formed store', async () => {
   const { dir, store } = await tmpStore();
   const data = await store.read();
-  assert.equal(data.version, 1);
+  assert.equal(data.version, STATE_VERSION);
   assert.deepEqual(data.ideas, []);
+  assert.equal(data.lastGeneration, null);
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -186,4 +187,60 @@ test('IdeaStore refuses a state file that is not a path', () => {
   assert.throws(() => new IdeaStore({ file: '/tmp/ideas.json' }), /needs a state file path/);
   assert.throws(() => new IdeaStore(), /needs a state file path/);
   assert.throws(() => new IdeaStore(''), /needs a state file path/);
+});
+
+// The live deck was recording {source, score, status} before it grew kinds, a
+// stage machine and a timeline. Reading such a file must produce a usable deck,
+// not six cards stuck at `stage: undefined` that the specifier will never pick
+// up — the file is fine, the reader has to be.
+test('an older state file is read as a v2 deck, not as an empty one', async () => {
+  const { dir, store } = await tmpStore();
+  const legacy = {
+    version: 1,
+    updatedAt: '2026-10-02T20:00:00.000Z',
+    lastGeneration: null,
+    ideas: [
+      {
+        id: 'idea-legacy1',
+        fingerprint: 'disabled-check:x',
+        title: 'Enable the parked check',
+        source: 'disabled-check',
+        status: 'pending',
+        score: 68,
+        band: 'should',
+        createdAt: '2026-10-02T19:00:00.000Z',
+      },
+    ],
+  };
+  await writeFile(path.join(dir, 'ideas.json'), JSON.stringify(legacy, null, 2), 'utf8');
+
+  const [read] = await store.list();
+  assert.equal(read.kind, 'technical', 'a chore is not a user-facing feature');
+  assert.equal(read.stage, 'draft', 'a card that was never specified is still a draft');
+  assert.equal(read.stale, false);
+  assert.equal(read.events.length, 1);
+  assert.equal(read.events[0].kind, 'proposed');
+  assert.equal(read.events[0].at, read.createdAt, 'the timeline starts where the record does');
+
+  // Reading is not writing: the file keeps its old shape until something changes.
+  const untouched = JSON.parse(await readFile(path.join(dir, 'ideas.json'), 'utf8'));
+  assert.equal(untouched.version, 1);
+  assert.equal(untouched.ideas[0].kind, undefined);
+
+  // The next real mutation persists the normalized record.
+  await store.decide('idea-legacy1', 'rejected', { comment: 'not now' });
+  const migrated = JSON.parse(await readFile(path.join(dir, 'ideas.json'), 'utf8'));
+  assert.equal(migrated.version, STATE_VERSION);
+  assert.equal(migrated.ideas[0].kind, 'technical');
+  assert.equal(migrated.ideas[0].stage, 'draft');
+  assert.equal(migrated.ideas[0].decision.comment, 'not now');
+});
+
+test('kindForSource splits product work from engineering chores', () => {
+  assert.equal(kindForSource('product-feature'), 'feature');
+  assert.equal(kindForSource('product-in-progress'), 'feature');
+  assert.equal(kindForSource('human'), 'feature');
+  assert.equal(kindForSource('todo-cluster'), 'technical');
+  assert.equal(kindForSource('fix-churn'), 'technical');
+  assert.equal(kindForSource(undefined), 'feature');
 });

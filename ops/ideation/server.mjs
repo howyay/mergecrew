@@ -10,8 +10,12 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dispatchAccepted, dispatchIdea, executorEnabled, reconcileExecutions } from './lib/executor.mjs';
+import { resolveSources } from './lib/generator.mjs';
+import { scoreIdea } from './lib/scorer.mjs';
 import { runIdeationCycle } from './lib/pipeline.mjs';
+import { specifierMode, specifyDue } from './lib/specifier.mjs';
 import { IdeaStore } from './lib/store.mjs';
+import { PRIORITIES, overrideTriage, queueOrder, triageIdea } from './lib/triage.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = process.env.MERGECREW_REPO ?? path.resolve(HERE, '..', '..');
@@ -22,6 +26,13 @@ const INTERVAL_MS = Math.max(1, Number(process.env.IDEATION_INTERVAL_MINUTES ?? 
 const SWEEP_MS = Math.max(5, Number(process.env.IDEATION_DISPATCH_SWEEP_SECONDS ?? 15)) * 1000;
 const GENERATOR = process.env.IDEA_GENERATOR ?? 'auto';
 const LIMIT = Number(process.env.IDEA_LIMIT ?? 12);
+// Which rule sets may propose ideas. The service ships product features by
+// default; engineering chores are opt-in (IDEA_SOURCES=chores or all).
+const SOURCES = resolveSources(process.env.IDEA_SOURCES ?? 'product');
+// Stage 2 runs after generation: each new draft is generalized, verified
+// against the code, specified and scored before it can reach the swipe gate.
+const SPECIFIER = specifierMode();
+const SPEC_PER_PASS = Math.max(1, Number(process.env.IDEATION_SPEC_LIMIT ?? 3));
 // Overridable so tests can run the real server against a throwaway repo
 // without touching this checkout's idea log.
 const STATE_FILE = process.env.IDEATION_STATE_FILE ?? path.join(HERE, 'state/ideas.json');
@@ -105,7 +116,7 @@ async function ciSnapshot() {
 let cycleInFlight = null;
 function cycle(reason) {
   if (cycleInFlight) return cycleInFlight;
-  cycleInFlight = runIdeationCycle({ repo: REPO, store, mode: GENERATOR, limit: LIMIT, log })
+  cycleInFlight = runIdeationCycle({ repo: REPO, store, mode: GENERATOR, limit: LIMIT, sources: SOURCES, log })
     .catch((err) => {
       log(`ideation cycle failed: ${err?.stack ?? err}`);
       return { error: String(err?.message ?? err) };
@@ -115,6 +126,29 @@ function cycle(reason) {
     });
   log(`ideation cycle requested (${reason})`);
   return cycleInFlight;
+}
+
+/**
+ * Stage 2 for whatever is still a draft, then rank what is ready.
+ *
+ * Triage re-runs on every prepared card, because it depends on the score the
+ * specification produced — ranking before specifying would order the queue by
+ * a number the specifier is about to replace.
+ */
+async function prepare(reason) {
+  if (SPECIFIER === 'off') return { specified: [], ranked: 0, skipped: 'specifier off' };
+  const specified = await specifyDue(store, { repo: REPO, limit: SPEC_PER_PASS, log });
+  const data = await store.read();
+  let ranked = 0;
+  for (const idea of data.ideas) {
+    if (idea.status !== 'pending' || (idea.stage ?? 'draft') !== 'specified') continue;
+    await store.setTriage(idea.id, triageIdea(idea));
+    ranked += 1;
+  }
+  if (specified.length || ranked) {
+    log(`prepare (${reason}): specified ${specified.filter((s) => s.ok).length}/${specified.length}, ranked ${ranked}`);
+  }
+  return { specified, ranked };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -137,6 +171,8 @@ const server = http.createServer(async (req, res) => {
         uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
         repo: REPO,
         generator: GENERATOR,
+        sources: SOURCES,
+        specifier: SPECIFIER,
         executorEnabled: executorEnabled(),
         ideas: stats.total,
       });
@@ -148,6 +184,9 @@ const server = http.createServer(async (req, res) => {
         stats: await store.stats(),
         lastGeneration: data.lastGeneration,
         ci: await ciSnapshot(),
+        generator: GENERATOR,
+        sources: SOURCES,
+        specifier: SPECIFIER,
         executorEnabled: executorEnabled(),
         intervalMinutes: INTERVAL_MS / 60_000,
       });
@@ -156,18 +195,35 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/ideas') {
       const ideas = await store.list();
       const status = url.searchParams.get('status');
-      const filtered = status ? ideas.filter((i) => i.status === status) : ideas;
-      filtered.sort((a, b) => b.score - a.score || String(a.createdAt).localeCompare(String(b.createdAt)));
-      return json(res, 200, { ideas: filtered });
+      const stage = url.searchParams.get('stage');
+      let filtered = status ? ideas.filter((i) => i.status === status) : ideas;
+      if (stage) filtered = filtered.filter((i) => (i.stage ?? 'draft') === stage);
+      // Queue order, not raw score: the deck's next card should be the next
+      // thing to build, which is what triage decided.
+      return json(res, 200, { ideas: queueOrder(filtered) });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/timeline') {
+      const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') ?? 100) || 100));
+      const events = await store.timeline({
+        limit,
+        status: url.searchParams.get('status') ?? undefined,
+        kind: url.searchParams.get('kind') ?? undefined,
+        id: url.searchParams.get('id') ?? undefined,
+      });
+      return json(res, 200, { events });
     }
 
     if (req.method === 'POST' && url.pathname === '/api/decide') {
       const body = await readBody(req);
-      const { id, decision } = body;
+      const { id, decision, comment, by } = body;
       if (typeof id !== 'string' || !['accepted', 'rejected', 'pending'].includes(decision)) {
         return json(res, 400, { error: 'expected {id: string, decision: accepted|rejected|pending}' });
       }
-      const idea = await store.decide(id, decision);
+      if (comment !== undefined && (typeof comment !== 'string' || comment.length > 2000)) {
+        return json(res, 400, { error: 'comment must be a string of at most 2000 characters' });
+      }
+      const idea = await store.decide(id, decision, { comment, by: typeof by === 'string' && by ? by : 'human' });
       if (!idea) return json(res, 404, { error: `unknown idea ${id}` });
 
       let dispatched = null;
@@ -180,10 +236,80 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { idea: updated, dispatched });
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/priority') {
+      const body = await readBody(req);
+      const { id, priority, reason, by } = body;
+      if (typeof id !== 'string' || !PRIORITIES.includes(priority)) {
+        return json(res, 400, { error: `expected {id: string, priority: ${PRIORITIES.join('|')}}` });
+      }
+      const idea = await store.get(id);
+      if (!idea) return json(res, 404, { error: `unknown idea ${id}` });
+      const triage = overrideTriage(idea, { priority, reason, by: typeof by === 'string' && by ? by : 'human' });
+      const updated = await store.setTriage(id, triage);
+      await store.recordEvent(id, { kind: 'priority', by: triage.override.by, detail: `${triage.override.automatic.priority ?? '?'} → ${priority}${triage.override.reason ? `: ${triage.override.reason}` : ''}` });
+      return json(res, 200, { idea: await store.get(id) ?? updated });
+    }
+
+    // Stage 2's human door: a person asks for something by name.
+    //
+    // Ideas from /api/propose are not exempt from the machine gate: the
+    // specifier still verifies them against the code and scores them, which is
+    // how "the human asked for it" and "the human is right about it" stay
+    // different claims.
+    if (req.method === 'POST' && url.pathname === '/api/propose') {
+      const body = await readBody(req);
+      const { title, rationale, kind, persona, by, evidence, spec } = body;
+      if (typeof title !== 'string' || !title.trim() || title.length > 160) {
+        return json(res, 400, { error: 'expected {title: string (1-160 chars), rationale?, kind?, persona?, spec?}' });
+      }
+      const types = ['feature', 'technical', 'refactor'];
+      if (kind !== undefined && !types.includes(kind)) {
+        return json(res, 400, { error: `kind must be one of ${types.join('|')}` });
+      }
+      const who = typeof by === 'string' && by ? by : 'human';
+      const features = { impact: 32, confidence: 10, effort: 13, risk: 12 };
+      const pre = scoreIdea(features);
+      const proposed = {
+        source: 'human',
+        title: title.trim(),
+        rationale: typeof rationale === 'string' && rationale.trim() ? rationale.trim().slice(0, 1200) : `Proposed by ${who}.`,
+        evidence: Array.isArray(evidence) && evidence.length ? evidence.slice(0, 8).map(String) : [`proposed by: ${who}`],
+        effortHint: 'medium',
+        kind: kind ?? 'feature',
+        persona: typeof persona === 'string' && persona ? persona : null,
+        features,
+        // The same shape the generator produces, so every downstream stage sees
+        // one kind of record: a pre-score the specifier is expected to replace.
+        status: 'pending',
+        stale: false,
+        score: pre.score,
+        band: pre.band,
+        scoreReasons: pre.reasons,
+      };
+      const { added } = await store.addMany([{ ...proposed, proposedBy: who }], { by: who });
+      const idea = added[0];
+      if (spec && typeof spec === 'object' && typeof spec.markdown === 'string') {
+        await store.setSpecification(idea.id, {
+          spec: { ...spec, markdown: spec.markdown, specifiedBy: who, specifiedAt: new Date().toISOString() },
+          verification: null,
+          by: who,
+        });
+      }
+      return json(res, 201, { idea: (await store.get(idea.id)) ?? idea });
+    }
+
+    // Generation and specification run together: a click that only produced
+    // drafts would leave the swipe deck empty and the click looking broken.
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       const result = await cycle('api');
+      const prepared = await prepare('api');
       const { signals, addedIdeas, ...summary } = result;
-      return json(res, result.error ? 500 : 200, { ...summary, addedTitles: (addedIdeas ?? []).map((i) => i.title) });
+      return json(res, result.error ? 500 : 200, {
+        ...summary,
+        addedTitles: (addedIdeas ?? []).map((i) => i.title),
+        specified: prepared.specified.filter((s) => s.ok).length,
+        ranked: prepared.ranked,
+      });
     }
 
     if (req.method === 'GET' && STATIC[url.pathname]) {
@@ -210,9 +336,22 @@ async function boot() {
   const stats = await store.stats();
   await reconcileExecutions(store, { stateDir: EXECUTION_DIR, log });
   server.listen(PORT, HOST, () => {
-    log(`ideation service on http://${HOST}:${PORT} repo=${REPO} ideas=${stats.total} generator=${GENERATOR} executor=${executorEnabled() ? 'on' : 'off'}`);
+    // Report the port actually bound, not the one requested: with IDEATION_PORT=0
+    // the kernel picks, and a log line that says ":0" is a lie an operator (or a
+    // test) cannot recover from.
+    const bound = server.address().port;
+    log(`ideation service on http://${HOST}:${bound} repo=${REPO} ideas=${stats.total} generator=${GENERATOR} sources=${SOURCES.join('+') || 'none'} specifier=${SPECIFIER} executor=${executorEnabled() ? 'on' : 'off'}`);
   });
-  if (stats.total === 0) await cycle('cold-start');
+  if (stats.total === 0) {
+    await cycle('cold-start');
+    await prepare('cold-start');
+  } else {
+    // Ideas that already exist still have to be brought up to the swipe gate: a
+    // service that restarts and waits six hours to specify the drafts it is
+    // holding looks broken from the deck. `prepare` is cheap and idempotent —
+    // it only picks up drafts that are still un-specified.
+    await prepare('boot');
+  }
   // Decisions can arrive from another writer (the mergecrew web app renders the
   // same deck), so sweep the file for accepted-but-undispatched ideas often.
   const sweep = setInterval(() => {
@@ -220,7 +359,11 @@ async function boot() {
       log(`dispatch sweep failed: ${err?.message ?? err}`),
     );
     takeGenerateRequest()
-      .then((asked) => (asked ? cycle('requested') : null))
+      .then(async (asked) => {
+        if (!asked) return null;
+        await cycle('requested');
+        return prepare('requested');
+      })
       .catch((err) => log(`generate request failed: ${err?.message ?? err}`));
   }, SWEEP_MS);
   sweep.unref?.();
@@ -228,6 +371,7 @@ async function boot() {
     await reconcileExecutions(store, { stateDir: EXECUTION_DIR, log });
     await dispatchAccepted(store, { repo: REPO, stateDir: EXECUTION_DIR, log });
     await cycle('interval');
+    await prepare('interval');
   }, INTERVAL_MS);
   timer.unref?.();
   const shutdown = () => {
@@ -247,4 +391,4 @@ if (invokedDirectly) {
   });
 }
 
-export { boot, server, store, cycle };
+export { boot, server, store, cycle, prepare };
