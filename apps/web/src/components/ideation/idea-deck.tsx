@@ -639,6 +639,11 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
   const skipped: IdeaSkippedCheck[] = Array.isArray(qa?.skipped) ? qa.skipped : [];
   const showsChecks = isChore || (isRefactor && (checks.length > 0 || skipped.length > 0));
 
+  /**
+   * A stage that was deliberately skipped is settled, not missing: a chore's
+   * PRD record says "no document, and here is why", which is a decision the
+   * host made and the human should read as one.
+   */
   const prdState: StageState = pipeline.prd ? 'done' : 'pending';
   const issueState: StageState =
     pipeline.issue?.status === 'created' ? 'done' : pipeline.issue ? 'blocked' : 'pending';
@@ -678,7 +683,11 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
           : 'blocked'
         : 'pending';
 
-  /** `2 passed · 1 not run` — counts first, because that is the decision. */
+  /**
+   * `2 passed · 1 skipped` — counts first, because that is the decision. The
+   * word matches the record, the expanded body and the changelog, so a human
+   * reading two of them is reading the same thing.
+   */
   const checksDetail = (() => {
     if (!qa) return 'not run yet';
     const passed = checks.filter((c) => c.status === 'passed').length;
@@ -686,7 +695,7 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
     const parts: string[] = [];
     if (passed) parts.push(`${passed} passed`);
     if (failed) parts.push(`${failed} failed`);
-    if (skipped.length) parts.push(`${skipped.length} not run`);
+    if (skipped.length) parts.push(`${skipped.length} skipped`);
     const summary = parts.length ? parts.join(' · ') : `verdict ${qa.verdict ?? 'unrecorded'}`;
     return qa.ranAt ? `${summary} · ${utcStamp(qa.ranAt)}` : summary;
   })();
@@ -770,9 +779,15 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
         <Stage
           label="PRD"
           state={prdState}
-          detail={pipeline.prd ? `${pipeline.prd.file} (${pipeline.prd.bytes} bytes)` : 'not written yet'}
+          detail={
+            pipeline.prd?.skipped
+              ? `not needed — ${pipeline.prd.reason ?? 'this work needs no document'}`
+              : pipeline.prd?.file
+                ? `${pipeline.prd.file} (${pipeline.prd.bytes ?? 0} bytes)`
+                : 'not written yet'
+          }
         >
-          {pipeline.prd && (
+          {pipeline.prd?.file && !pipeline.prd.skipped && (
             <button className="ml-2 underline" onClick={() => void view('prd')}>
               view
             </button>

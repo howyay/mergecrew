@@ -77,7 +77,21 @@ export type IdeaPipeline = {
   error?: string | null;
   attempts?: number;
   updatedAt?: string;
-  prd?: { file: string; bytes: number; at: string; acceptance?: string[] };
+  /**
+   * Stage 1. A feature or a refactor gets a written PRD, so the record carries
+   * the file and its size. A chore gets a record that says it needs none
+   * (`skipped: true` plus the reason) because the signal that produced the
+   * chore is the whole specification — so `file`/`bytes` are absent and the
+   * card must not render them.
+   */
+  prd?: {
+    file?: string;
+    bytes?: number;
+    skipped?: boolean;
+    reason?: string | null;
+    at?: string;
+    acceptance?: string[];
+  };
   issue?: { status: string; url: string | null; number: number | null; file?: string; reason?: string };
   worktree?: { status: string; dir: string; branch: string; taskFile?: string };
   dev?: PipelineStage & {
