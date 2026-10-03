@@ -416,7 +416,12 @@ product surface to drive: its QA **runs the repository's own check list**
 command's exit code and output. A check that needs `node_modules` (a fresh
 worktree has none) is recorded as **skipped** rather than quietly dropped, and a
 run in which nothing could execute is `verdict: 'not-run'` — the card is
-*blocked*, never passed. The deck renders that as a `Checks` row where a feature
+*blocked*, never passed. Each check runs with this project's own configuration
+removed (`PIPELINE_ENV_KEYS` in `ops/pipeline/lib/checks.mjs`): the service
+exports a `FORGEJO_URL`, and a suite that asks *what happens when no forgejo is
+configured* would otherwise fail a branch for the operator's shell. A branch is
+judged in CI's environment, not in the one that happens to be running the sweep.
+The deck renders that as a `Checks` row where a feature
 shows `UAT`, and a `Changelog` where a feature shows a `Deliverable`.
 
 `technical` was the old word for a chore. Nothing has to be migrated by hand: it

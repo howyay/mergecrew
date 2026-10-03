@@ -17,7 +17,11 @@
  *     that would fail every chore for the same non-reason);
  *   - `verdict` is `pass` only when at least one check actually ran and nothing
  *     failed. A run where everything was skipped is `not-run`, and the pipeline
- *     treats that as blocked rather than as a green light.
+ *     treats that as blocked rather than as a green light;
+ *   - each check runs with this project's own configuration removed
+ *     (`PIPELINE_ENV_KEYS`): a suite that asks "what happens when no forgejo is
+ *     configured" must not inherit the service's `FORGEJO_URL` and fail a branch
+ *     for the operator's shell.
  */
 import { spawn } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
@@ -49,6 +53,51 @@ export function needsDependencies(command) {
   return NEEDS_DEPS.test(String(command ?? '').trim());
 }
 
+/**
+ * The configuration the pipeline service runs with, which a check must not see.
+ *
+ * `FORGEJO_URL` is the sharp one. `ops/pipeline/test/prd.test.mjs` asks
+ * `detectForge` what it does when no API base is configured; the service has one
+ * configured, so the suite failed inside a worktree whose branch had touched
+ * nothing near it, and the chore was reported as blocked. A branch is judged in
+ * CI's environment, not in the operator's.
+ *
+ * This is a deny-list, not an allow-list: PATH, HOME and the nix variables have
+ * to survive or nothing runs, so only the keys this project injects are removed.
+ */
+export const PIPELINE_ENV_KEYS = Object.freeze([
+  'MERGECREW_REPO',
+  'IDEATION_STATE_FILE',
+  'IDEATION_HOST',
+  'IDEATION_PORT',
+  'IDEATION_INTERVAL_MINUTES',
+  'IDEATION_SPECIFIER',
+  'IDEATION_SPEC_LIMIT',
+  'EXECUTOR',
+  'IDEA_SOURCES',
+  'PIPELINE_DEV_AGENT',
+  'PIPELINE_MAX_PER_SWEEP',
+  'PIPELINE_MAX_DEV',
+  'PIPELINE_MAX_QA',
+  'PIPELINE_INTERVAL_SECONDS',
+  'PIPELINE_UAT_URL',
+  'PIPELINE_QA_PORT',
+  'PIPELINE_CHECK_TIMEOUT_MS',
+  'FORGEJO_URL',
+  'FORGEJO_REPO',
+  'ISSUE_TRACKER',
+  'DEV_AGENT',
+  'DSH_BIN',
+  'DSH_WEB_URL',
+]);
+
+/** The environment a check runs in: the operator's shell minus this project's own settings. */
+export function cleanCheckEnv(env = process.env) {
+  const out = { ...env, CI: '1' };
+  for (const key of PIPELINE_ENV_KEYS) delete out[key];
+  return out;
+}
+
 /** The check list as it exists in this tree (the worktree, not the checkout). */
 export async function readChecks(dir) {
   try {
@@ -59,7 +108,7 @@ export async function readChecks(dir) {
 }
 
 /** Run one shell command in `cwd`, capturing combined output. Never throws. */
-export function runCheck(command, { cwd, timeoutMs = CHECK_TIMEOUT_MS, env = process.env } = {}) {
+export function runCheck(command, { cwd, timeoutMs = CHECK_TIMEOUT_MS, env = cleanCheckEnv() } = {}) {
   return new Promise((resolve) => {
     const started = Date.now();
     const child = spawn('/bin/sh', ['-c', command], {

@@ -9,7 +9,16 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { needsDependencies, parseChecks, readChecks, runChecks, summariseChecks, verdictOf } from '../lib/checks.mjs';
+import {
+  PIPELINE_ENV_KEYS,
+  cleanCheckEnv,
+  needsDependencies,
+  parseChecks,
+  readChecks,
+  runChecks,
+  summariseChecks,
+  verdictOf,
+} from '../lib/checks.mjs';
 
 async function worktree(conf) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-checks-'));
@@ -129,6 +138,44 @@ test('a worktree with no checks.conf says so instead of inventing a pass', async
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('a check does not inherit the configuration the pipeline runs with', async () => {
+  // Caught live: the service exports FORGEJO_URL, so `prd.test.mjs` — which asks
+  // what `detectForge` does when no base is configured — failed inside a worktree
+  // whose branch never went near it, and an honest chore was reported as blocked.
+  const dir = await worktree(
+    [
+      'node -e "process.exit(process.env.FORGEJO_URL || process.env.MERGECREW_REPO || process.env.PIPELINE_DEV_AGENT ? 9 : 0)"',
+      'node -e "process.exit(process.env.PATH && process.env.CI === \'1\' ? 0 : 9)"',
+    ].join('\n'),
+  );
+  const saved = { FORGEJO_URL: process.env.FORGEJO_URL, MERGECREW_REPO: process.env.MERGECREW_REPO, PIPELINE_DEV_AGENT: process.env.PIPELINE_DEV_AGENT };
+  process.env.FORGEJO_URL = 'https://git.yay.how';
+  process.env.MERGECREW_REPO = '/home/haoye/projects/mergecrew';
+  process.env.PIPELINE_DEV_AGENT = 'on';
+  try {
+    const qa = await runChecks({ dir });
+    assert.equal(qa.verdict, 'pass', 'a check sees CI, not the operator');
+    assert.equal(qa.results[0].status, 'passed', 'no FORGEJO_URL/MERGECREW_REPO/PIPELINE_DEV_AGENT leaks in');
+    assert.equal(qa.results[1].status, 'passed', 'PATH survives and the run still looks like CI');
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('cleanCheckEnv removes this project settings and nothing else', () => {
+  const env = cleanCheckEnv({ PATH: '/usr/bin', HOME: '/home/haoye', FORGEJO_URL: 'https://git.yay.how', IDEATION_PORT: '7788' });
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal(env.HOME, '/home/haoye');
+  assert.equal(env.CI, '1');
+  assert.equal('FORGEJO_URL' in env, false);
+  assert.equal('IDEATION_PORT' in env, false);
+  assert.equal(PIPELINE_ENV_KEYS.includes('PATH'), false);
 });
 
 test('summariseChecks is one line a human reads at the gate', () => {

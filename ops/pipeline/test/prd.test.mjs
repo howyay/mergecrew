@@ -103,29 +103,33 @@ test('detectForge recognises the scp-style ssh form and the named remote', () =>
   assert.equal(forge.remote, 'upstream');
 });
 
-test('detectForge treats a non-github host as forgejo', () => {
-  const local = detectForge({ execImpl: () => 'http://localhost:3000/acme/widgets.git' });
-  assert.equal(local.provider, 'forgejo');
-  assert.equal(local.host, 'localhost:3000');
-  assert.equal(local.url, 'http://localhost:3000', 'the API base keeps the real scheme and port');
-  assert.equal(local.owner, 'acme');
-  assert.equal(local.name, 'widgets');
+test('detectForge treats a non-github host as forgejo', async () => {
+  // Pinned to the default: these assertions describe what happens with no API
+  // base configured, and the pipeline service exports a FORGEJO_URL of its own.
+  await withForgejoUrl(undefined, () => {
+    const local = detectForge({ execImpl: () => 'http://localhost:3000/acme/widgets.git' });
+    assert.equal(local.provider, 'forgejo');
+    assert.equal(local.host, 'localhost:3000');
+    assert.equal(local.url, 'http://localhost:3000', 'the API base keeps the real scheme and port');
+    assert.equal(local.owner, 'acme');
+    assert.equal(local.name, 'widgets');
 
-  const custom = detectForge({ execImpl: () => 'https://git.example.com/team/project.git' });
-  assert.equal(custom.provider, 'forgejo');
-  assert.equal(custom.url, 'https://git.example.com');
+    const custom = detectForge({ execImpl: () => 'https://git.example.com/team/project.git' });
+    assert.equal(custom.provider, 'forgejo');
+    assert.equal(custom.url, 'https://git.example.com');
 
-  const mounted = detectForge({
-    execImpl: () => 'https://forge.example.com/forgejo/team/project.git',
+    const mounted = detectForge({
+      execImpl: () => 'https://forge.example.com/forgejo/team/project.git',
+    });
+    assert.equal(mounted.provider, 'forgejo');
+    assert.equal(
+      mounted.url,
+      'https://forge.example.com/forgejo',
+      'a /forgejo mount is part of the API base',
+    );
+    assert.equal(mounted.owner, 'team');
+    assert.equal(mounted.name, 'project');
   });
-  assert.equal(mounted.provider, 'forgejo');
-  assert.equal(
-    mounted.url,
-    'https://forge.example.com/forgejo',
-    'a /forgejo mount is part of the API base',
-  );
-  assert.equal(mounted.owner, 'team');
-  assert.equal(mounted.name, 'project');
 });
 
 test('detectForge honours an explicit FORGEJO_URL and never overrides github.com', async () => {
@@ -149,36 +153,40 @@ test('detectForge honours an explicit FORGEJO_URL and never overrides github.com
   });
 });
 
-test('detectForge reports none with the real reason', () => {
-  const missing = detectForge({
-    execImpl: () => ({ status: 128, stdout: '', stderr: 'error: No such remote' }),
+test('detectForge reports none with the real reason', async () => {
+  // Same pin as above: the ssh case asserts there is no API base to fall back
+  // to, which only means anything if this process has none either.
+  await withForgejoUrl(undefined, () => {
+    const missing = detectForge({
+      execImpl: () => ({ status: 128, stdout: '', stderr: 'error: No such remote' }),
+    });
+    assert.equal(missing.provider, 'none');
+    assert.equal(missing.url, null);
+    assert.match(missing.reason, /No such remote/);
+
+    const threw = detectForge({
+      execImpl: () => {
+        throw new Error('not a git repository');
+      },
+    });
+    assert.equal(threw.provider, 'none');
+    assert.match(threw.reason, /not a git repository/);
+
+    const localPath = detectForge({ execImpl: () => '/srv/git/mergecrew.git' });
+    assert.equal(localPath.provider, 'none');
+    assert.match(localPath.reason, /local path/);
+
+    const noOwner = detectForge({ execImpl: () => 'git@github.com:mergecrew.git' });
+    assert.equal(noOwner.provider, 'none');
+    assert.match(noOwner.reason, /owner\/name/);
+
+    const sshForgeWithoutBase = detectForge({
+      execImpl: () => 'git@git.example.com:team/project.git',
+    });
+    assert.equal(sshForgeWithoutBase.provider, 'forgejo');
+    assert.equal(sshForgeWithoutBase.url, null, 'an ssh remote must not fabricate an http base');
+    assert.match(sshForgeWithoutBase.reason, /FORGEJO_URL/);
   });
-  assert.equal(missing.provider, 'none');
-  assert.equal(missing.url, null);
-  assert.match(missing.reason, /No such remote/);
-
-  const threw = detectForge({
-    execImpl: () => {
-      throw new Error('not a git repository');
-    },
-  });
-  assert.equal(threw.provider, 'none');
-  assert.match(threw.reason, /not a git repository/);
-
-  const localPath = detectForge({ execImpl: () => '/srv/git/mergecrew.git' });
-  assert.equal(localPath.provider, 'none');
-  assert.match(localPath.reason, /local path/);
-
-  const noOwner = detectForge({ execImpl: () => 'git@github.com:mergecrew.git' });
-  assert.equal(noOwner.provider, 'none');
-  assert.match(noOwner.reason, /owner\/name/);
-
-  const sshForgeWithoutBase = detectForge({
-    execImpl: () => 'git@git.example.com:team/project.git',
-  });
-  assert.equal(sshForgeWithoutBase.provider, 'forgejo');
-  assert.equal(sshForgeWithoutBase.url, null, 'an ssh remote must not fabricate an http base');
-  assert.match(sshForgeWithoutBase.reason, /FORGEJO_URL/);
 });
 
 test('buildPrd emits every required section in order', () => {
