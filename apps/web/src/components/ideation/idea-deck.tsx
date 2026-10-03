@@ -897,7 +897,9 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
           state={pipeline.deliver ? 'done' : qaState === 'done' ? 'waiting' : 'pending'}
           detail={
             pipeline.deliver
-              ? `${pipeline.deliver.kind ?? 'deliverable'} · ${pipeline.deliver.file ?? ''}${
+              ? `${
+                  pipeline.deliver.kind ? normalizeKind(pipeline.deliver.kind) : 'deliverable'
+                } · ${pipeline.deliver.file ?? ''}${
                   pipeline.deliver.title ? ` · ${pipeline.deliver.title}` : ''
                 }`
               : qaState === 'done'
