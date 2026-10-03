@@ -14,7 +14,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { IdeaStore } from '../../ideation/lib/store.mjs';
-import { advanceIdea, MAX_STAGE_ATTEMPTS, pipelineStatusFor, STAGES, sweep, workList } from '../run.mjs';
+import { advanceIdea, MAX_STAGE_ATTEMPTS, ownsQaStage, pipelineStatusFor, STAGES, sweep, workList } from '../run.mjs';
 
 const run = promisify(execFile);
 
@@ -401,6 +401,51 @@ test('a full dev budget defers the cards that need an agent, not the one whose d
     assert.equal(out.advanced.length, 1);
     assert.equal(out.advanced[0].did, 'deliver');
     assert.equal(existsSync(path.join(repo, 'ops/pipeline/deliver/ready.md')), true);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The QA job is spawned, and the sweep writes `qa: {status:'running', pid}` for
+ * it. The child boots seconds later, reads that record, and used to conclude
+ * "somebody else owns this stage" — so it did nothing, exited 0, wrote an empty
+ * log, and the sweep reported the UAT as a crash. The pid is what separates the
+ * two readings.
+ */
+test('the QA job recognises the record the sweep wrote for it, and only that one', () => {
+  assert.equal(ownsQaStage({}, { inline: true, pid: 42 }), true, 'no record yet: the job is first');
+  assert.equal(ownsQaStage({ qa: { status: 'running', pid: 42 } }, { inline: true, pid: 42 }), true, 'my own pid');
+  assert.equal(ownsQaStage({ qa: { status: 'running', pid: 7 } }, { inline: true, pid: 42 }), false, 'another job owns it');
+  assert.equal(ownsQaStage({ qa: { status: 'failed', pid: 42 } }, { inline: true, pid: 42 }), true, 'a retry of my own run');
+  assert.equal(ownsQaStage({ qa: { status: 'running', pid: 42 } }, { inline: false, pid: 42 }), false, 'a sweep never runs the browser');
+});
+
+test('an idea run that does nothing says why, instead of logging an empty file', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-quiet-'));
+  const { dir, store } = await storeWith([{ id: 'held', title: 'held' }]);
+  const stateFile = path.join(dir, 'ideas.json');
+  try {
+    await run('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    await store.decide('held', 'accepted');
+    // A live UAT owned by somebody else: this run must not drive the browser.
+    await store.setPipeline('held', { status: 'running', stages: { dev: { status: 'done' }, qa: { status: 'running', pid: 1 } } });
+    await mkdir(path.join(repo, 'ops/pipeline/state'), { recursive: true });
+    await writeFile(
+      path.join(repo, 'ops/pipeline/state/held.json'),
+      JSON.stringify({ id: 'held', status: 'running', stages: { dev: { status: 'done' }, qa: { status: 'running', pid: 1 } } }, null, 2),
+      'utf8',
+    );
+
+    const out = await run('node', ['ops/pipeline/run.mjs', '--idea', 'held', '--stage', 'qa'], {
+      // The script lives in this checkout; MERGECREW_REPO is what redirects the
+      // artefacts, so the fixture repo never needs an ops/ tree of its own.
+      cwd: path.resolve(new URL('../../..', import.meta.url).pathname),
+      env: { ...process.env, IDEATION_STATE_FILE: stateFile, MERGECREW_REPO: repo, PIPELINE_DEV_AGENT: 'off' },
+    });
+    assert.match(out.stdout, /nothing to do for held/);
+    assert.equal(existsSync(path.join(repo, 'ops/pipeline/uat/held')), false);
   } finally {
     await rm(repo, { recursive: true, force: true });
     await rm(dir, { recursive: true, force: true });

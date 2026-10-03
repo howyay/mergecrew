@@ -141,6 +141,23 @@ export async function attachSession(repo, dev) {
  * Start the UAT as its own process so one idea's browser run does not block the
  * sweep that is advancing every other idea.
  */
+/**
+ * Is this process the QA run the pipeline is waiting for?
+ *
+ * The sweep records `qa: {status:'running', pid}` for the job it just spawned,
+ * and the child finishes booting seconds later. Both orders are therefore
+ * normal, and on disk they look identical to "somebody else owns this stage":
+ * the child would read a record it wrote nothing about and exit without running
+ * anything, which the sweep then reported as a crashed job. The pid is the one
+ * field that tells the two apart.
+ */
+export function ownsQaStage(stages = {}, { inline = false, pid = process.pid } = {}) {
+  if (!inline) return false;
+  const qa = stages?.qa;
+  if (!qa) return true;
+  return qa.pid === pid;
+}
+
 export async function spawnQaJob({ repo, idea, url, port, log: emit = log } = {}) {
   const logDir = path.join(repo, 'ops/pipeline/state/qa-logs');
   await mkdir(logDir, { recursive: true });
@@ -378,6 +395,10 @@ export async function advanceIdea(
   // the browser in-process, because it *is* the process. A sweep only starts
   // jobs, so a UAT never blocks the queue behind it.
   const qaInline = onlyStage === 'qa';
+  // The job this sweep spawned is this process. See ownsQaStage(): the record
+  // naming my pid is the difference between "somebody else is running the UAT"
+  // and "I am the UAT run the pipeline is waiting for".
+  const qaOwnedByMe = ownsQaStage(stages, { inline: qaInline });
 
   if (stages.qa?.status === 'running' && !qaInline) {
     // The job is alive → nothing to do; it owns the stage (and its writer lock).
@@ -403,7 +424,7 @@ export async function advanceIdea(
     return { ...out, did: 'qa', stage: 'qa', status: 'blocked', reason: qa.reason };
   }
 
-  if (!stages.qa && qaReady && (!onlyStage || onlyStage === 'qa')) {
+  if ((!stages.qa || qaOwnedByMe) && qaReady && (!onlyStage || onlyStage === 'qa')) {
     const port = Number(process.env.PIPELINE_QA_PORT) || qaPort(idea.id);
     const source = forceQa && stages.dev?.status !== 'done' ? 'manual' : 'pipeline';
     if (!qaInline) {
@@ -440,6 +461,10 @@ export async function advanceIdea(
     const result = await runUat({ idea, url, outDir, steps, acceptance, port, log: emit });
     const reportFile = path.join(outDir, 'uat.md');
     const uat = {
+      // The stage is over; the verdict says how it went. Without this the record
+      // keeps the `running` the sweep wrote when it spawned the job, and a
+      // finished UAT then reads as "still driving the browser" forever.
+      status: 'done',
       verdict: result.verdict,
       ok: result.ok,
       report: path.relative(repo, reportFile),
@@ -689,6 +714,14 @@ async function main() {
       log: asJson ? () => {} : log,
     });
     if (asJson) console.log(JSON.stringify(result, null, 2));
+    // A job that decides there is nothing to do must say so. Silence here once
+    // read as a crashed job: the log was empty, so the sweep could only report
+    // "exited without writing a verdict" while the real reason was a gate.
+    else if (!result.did) {
+      log(
+        `nothing to do for ${id}: ${result.status ?? 'idle'}${result.stage ? ` (stage ${result.stage})` : ''}${result.reason ? ` — ${result.reason}` : ''}`,
+      );
+    }
     return;
   }
 
