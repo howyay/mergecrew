@@ -11,6 +11,7 @@ import {
   Clock,
   FileText,
   GitBranch,
+  ListChecks,
   Loader2,
   RotateCcw,
   Sparkles,
@@ -20,7 +21,8 @@ import {
 import { Button } from '@/components/ui';
 import { utcStamp } from '@/lib/time';
 import { BAND_TONE, KindBadge, PriorityChip, SpecPanel } from '@/components/ideation/spec-panel';
-import type { Idea, IdeaPipeline } from '@/lib/ideation';
+import { isChangelogDeliverable, normalizeKind } from '@/lib/ideation-kinds';
+import type { Idea, IdeaCheckResult, IdeaPipeline, IdeaSkippedCheck } from '@/lib/ideation';
 
 const THRESHOLD = 110;
 
@@ -115,6 +117,14 @@ export function IdeaDeck({
   const top = ready[0];
   const behind = ready[1];
   const queued = ready.slice(1);
+
+  /**
+   * A chore is never specified: the host writes no spec file and `stage` stays
+   * at `draft` for the card's whole life. Rendering the spec panel anyway would
+   * dress "nobody checked this" up as a verified claim, so the card says what it
+   * is instead — the reason it is swipable without the panel.
+   */
+  const topIsChore = normalizeKind(top?.kind) === 'chore';
 
   const refresh = useCallback(() => startTransition(() => router.refresh()), [router]);
   const note = useCallback((text: string, bad?: boolean) => setToast({ text, bad }), []);
@@ -307,7 +317,15 @@ export function IdeaDeck({
             </div>
           )}
 
-          <SpecPanel idea={top} onChanged={refresh} onNote={note} />
+          {topIsChore ? (
+            <div className="mt-3 border border-hair bg-paper px-4 py-3 text-[12.5px] text-muted">
+              Maintenance work — a chore is not specified and not verified against the code, so there
+              is nothing to read here and nothing to swipe through the specifier. Its QA stage runs
+              repo checks instead of a browser session, and the deliverable is a changelog entry.
+            </div>
+          ) : (
+            <SpecPanel idea={top} onChanged={refresh} onNote={note} />
+          )}
         </>
       ) : (
         <div className="border border-hair bg-paper px-4 py-6 text-[13px] text-ink-2">
@@ -452,6 +470,9 @@ function QueuedCard({
   onNote: (text: string, bad?: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // No spec exists for a chore, so the panel and its toggle are not offered —
+  // a "read spec" button that always opens an empty panel is worse than none.
+  const isChore = normalizeKind(idea.kind) === 'chore';
   return (
     <div className="border border-hair bg-paper px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -469,12 +490,14 @@ function QueuedCard({
           <span className={clsx('font-mono text-[10.5px] uppercase', BAND_TONE[idea.band ?? 'could'])}>
             {idea.band ?? 'unscored'}
           </span>
-          <Button size="sm" variant="secondary" onClick={() => setOpen(!open)} type="button">
-            {open ? 'hide spec' : 'read spec'}
-          </Button>
+          {!isChore && (
+            <Button size="sm" variant="secondary" onClick={() => setOpen(!open)} type="button">
+              {open ? 'hide spec' : 'read spec'}
+            </Button>
+          )}
         </div>
       </div>
-      {open && <SpecPanel idea={idea} onChanged={onChanged} onNote={onNote} defaultOpen />}
+      {open && !isChore && <SpecPanel idea={idea} onChanged={onChanged} onNote={onNote} defaultOpen />}
     </div>
   );
 }
@@ -595,9 +618,26 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
   const [open, setOpen] = useState<{ kind: string; body: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checksOpen, setChecksOpen] = useState(false);
 
   const dev = pipeline.dev;
   const qa = pipeline.qa;
+
+  const kind = normalizeKind(idea.kind);
+  const isChore = kind === 'chore';
+  const isRefactor = kind === 'refactor';
+
+  /**
+   * The QA stage has two record shapes and the card reads the one it was given
+   * rather than the one it expects: a browser session for a feature, and repo
+   * checks (`results`/`skipped`) for work that has no user-visible behaviour to
+   * exercise. A chore always reads checks — it has no browser stage at all — and
+   * a refactor switches to them as soon as the host has written a run, which
+   * keeps a refactor recorded the old way rendering exactly as it did before.
+   */
+  const checks: IdeaCheckResult[] = Array.isArray(qa?.results) ? qa.results : [];
+  const skipped: IdeaSkippedCheck[] = Array.isArray(qa?.skipped) ? qa.skipped : [];
+  const showsChecks = isChore || (isRefactor && (checks.length > 0 || skipped.length > 0));
 
   const prdState: StageState = pipeline.prd ? 'done' : 'pending';
   const issueState: StageState =
@@ -616,8 +656,51 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
         : dev
           ? 'blocked'
           : 'pending';
-  const qaState: StageState =
-    qa?.verdict === 'pass' ? 'done' : qa ? (qa.verdict === 'blocked' ? 'waiting' : 'blocked') : 'pending';
+  /**
+   * The QA row's state. A check run is judged on its verdict: `pass` is done,
+   * and `fail`/`not-run`/a half-written record is red — "nothing ran" is not
+   * evidence that the work is good, so it must not render as green or as still
+   * in progress. Only a live run counts as waiting.
+   */
+  const qaState: StageState = showsChecks
+    ? qa?.verdict === 'pass'
+      ? 'done'
+      : qa?.status === 'running'
+        ? 'waiting'
+        : qa
+          ? 'blocked'
+          : 'pending'
+    : qa?.verdict === 'pass'
+      ? 'done'
+      : qa
+        ? qa.verdict === 'blocked'
+          ? 'waiting'
+          : 'blocked'
+        : 'pending';
+
+  /** `2 passed · 1 not run` — counts first, because that is the decision. */
+  const checksDetail = (() => {
+    if (!qa) return 'not run yet';
+    const passed = checks.filter((c) => c.status === 'passed').length;
+    const failed = checks.filter((c) => c.status === 'failed').length;
+    const parts: string[] = [];
+    if (passed) parts.push(`${passed} passed`);
+    if (failed) parts.push(`${failed} failed`);
+    if (skipped.length) parts.push(`${skipped.length} not run`);
+    const summary = parts.length ? parts.join(' · ') : `verdict ${qa.verdict ?? 'unrecorded'}`;
+    return qa.ranAt ? `${summary} · ${utcStamp(qa.ranAt)}` : summary;
+  })();
+
+  const checksBody = [
+    ...checks.map(
+      (c) =>
+        `${c.status === 'passed' ? 'PASS' : 'FAIL'}  ${c.command}${
+          typeof c.exitCode === 'number' ? `  (exit ${c.exitCode})` : ''
+        }${c.evidence ? `\n      ${c.evidence}` : ''}`,
+    ),
+    ...skipped.map((s) => `SKIP  ${s.command}${s.reason ? `  — ${s.reason}` : ''}`),
+  ].join('\n');
+
   const reviewState: StageState =
     pipeline.review?.status === 'approved'
       ? 'done'
@@ -751,18 +834,35 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
             </a>
           )}
         </Stage>
-        <Stage
-          label="UAT"
-          state={qaState}
-          detail={qa ? `${qa.verdict}${qa.report ? ` · ${qa.report}` : ''}` : 'not run yet'}
-        >
-          {qa?.report && (
-            <button className="ml-2 underline" onClick={() => void view('uat')}>
-              report
-            </button>
-          )}
-        </Stage>
-        {qa?.demo && (
+        {showsChecks ? (
+          <Stage label="Checks" state={qaState} detail={checksDetail}>
+            {checks.length + skipped.length > 0 && (
+              <button className="ml-2 underline" onClick={() => setChecksOpen(!checksOpen)}>
+                {checksOpen ? 'hide' : `show all ${checks.length + skipped.length}`}
+              </button>
+            )}
+            {qa?.report && (
+              <button className="ml-2 underline" onClick={() => void view('uat')}>
+                report
+              </button>
+            )}
+          </Stage>
+        ) : (
+          <Stage
+            label="UAT"
+            state={qaState}
+            detail={qa ? `${qa.verdict}${qa.report ? ` · ${qa.report}` : ''}` : 'not run yet'}
+          >
+            {qa?.report && (
+              <button className="ml-2 underline" onClick={() => void view('uat')}>
+                report
+              </button>
+            )}
+          </Stage>
+        )}
+        {/* A chore has no browser session, so it can have no recording: the row
+            and the inline player are both suppressed rather than left empty. */}
+        {qa?.demo && !isChore && (
           <Stage label="Demo" state="done" detail={qa.demo}>
             <a
               className="ml-2 underline"
@@ -775,7 +875,10 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
           </Stage>
         )}
         <Stage
-          label={pipeline.deliver?.kind === 'technical' ? 'Changelog' : 'Deliverable'}
+          // Only a feature delivers a demo recording; a refactor, a chore and
+          // the records still spelled `technical` deliver a changelog entry.
+          // With no `deliver.kind` recorded yet, the card's own kind decides.
+          label={isChangelogDeliverable(pipeline.deliver?.kind ?? idea.kind) ? 'Changelog' : 'Deliverable'}
           state={pipeline.deliver ? 'done' : qaState === 'done' ? 'waiting' : 'pending'}
           detail={
             pipeline.deliver
@@ -808,7 +911,23 @@ function DeliveryCard({ idea, onChanged }: { idea: Idea; onChanged: () => void }
         />
       </div>
 
-      {qa?.demo && (
+      {checksOpen && showsChecks && (
+        <div className="mt-3 border-t border-hair pt-3">
+          <div className="mb-1 flex items-center gap-2 text-[12px] text-muted">
+            <ListChecks className="h-[13px] w-[13px]" /> repo checks
+            <button className="underline" onClick={() => setChecksOpen(false)}>
+              close
+            </button>
+          </div>
+          {/* The record's own words: command, exit code and the evidence the
+              host kept, in the same block the artefact viewer uses. */}
+          <pre className="max-h-[240px] overflow-auto border border-hair bg-wash p-3 font-mono text-[11.5px] leading-[1.5] whitespace-pre-wrap">
+            {checksBody || 'the host recorded no commands for this run'}
+          </pre>
+        </div>
+      )}
+
+      {qa?.demo && !isChore && (
         <div className="mt-3 border-t border-hair pt-3">
           {/* APNG plays inline; no encoder, no codec, no external player. */}
           <img

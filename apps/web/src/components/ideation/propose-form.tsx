@@ -17,13 +17,13 @@ import { Button } from '@/components/ui';
  * says so, because "I proposed it" is not the same claim as "it is worth doing".
  */
 
-const KINDS = ['feature', 'technical', 'refactor'] as const;
+const KINDS = ['feature', 'refactor', 'chore'] as const;
 type Kind = (typeof KINDS)[number];
 
 const KIND_HINT: Record<Kind, string> = {
   feature: 'noticed a product idea',
-  technical: 'engineering work with no user-visible change',
   refactor: 'restructure code without changing behaviour',
+  chore: 'maintenance work — no spec, checked by repo checks, delivered as a changelog',
 };
 
 export function ProposeForm() {

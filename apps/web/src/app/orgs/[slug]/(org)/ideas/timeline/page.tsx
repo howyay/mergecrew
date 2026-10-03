@@ -42,11 +42,13 @@ const EVENT_FILTERS: { key: string | null; label: string }[] = [
   { key: 'stale', label: 'Stale' },
 ];
 
+// The canonical kinds. `timeline()` filters on the canonical kind too, so the
+// chore chip finds the records still spelled `technical` on disk.
 const KIND_FILTERS: { key: string | null; label: string }[] = [
   { key: null, label: 'all kinds' },
   { key: 'feature', label: 'feature' },
-  { key: 'technical', label: 'technical' },
   { key: 'refactor', label: 'refactor' },
+  { key: 'chore', label: 'chore' },
 ];
 
 function href(

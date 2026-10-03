@@ -32,10 +32,18 @@
 import { createHash } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { IDEA_KIND_INPUTS, isChangelogDeliverable, needsSpecification, normalizeKind, type IdeaKind } from './ideation-kinds';
 
 export type IdeaBand = 'must' | 'should' | 'could' | 'wont';
 export type IdeaStatus = 'pending' | 'accepted' | 'rejected';
-export type IdeaKind = 'feature' | 'technical' | 'refactor';
+
+/**
+ * The kind taxonomy and the rules that hang off it live in `./ideation-kinds`,
+ * which a client component may import (this module imports `node:fs`). They are
+ * re-exported here so server code keeps one import: `@/lib/ideation`.
+ */
+export { IDEA_KIND_INPUTS, isChangelogDeliverable, needsSpecification, normalizeKind };
+export type { IdeaKind };
 /** `draft` → `specifying` → `specified`, or `spec-failed`. Only `specified` is swipable. */
 export type IdeaStage = 'draft' | 'specifying' | 'specified' | 'spec-failed';
 
@@ -46,6 +54,22 @@ export const RUBRIC_MAX: IdeaFeatures = { impact: 40, confidence: 20, effort: 20
 
 /** One stage of the host pipeline, as the host last recorded it. */
 export type PipelineStage = Record<string, unknown> & { status?: string; reason?: string | null; at?: string };
+
+/**
+ * One command the QA stage ran, for the kinds whose QA is repo checks rather
+ * than a browser session. `evidence` is the tail of the output the host kept —
+ * present on a failure, because "the check failed" without the line that failed
+ * is not something a human can act on.
+ */
+export type IdeaCheckResult = {
+  command: string;
+  status: 'passed' | 'failed';
+  exitCode?: number | null;
+  evidence?: string | null;
+};
+
+/** A check the QA stage decided not to run, and the host's reason. */
+export type IdeaSkippedCheck = { command: string; reason?: string | null };
 
 export type IdeaPipeline = {
   status?: string;
@@ -67,8 +91,26 @@ export type IdeaPipeline = {
     commit?: string | null;
     commitFiles?: number;
   };
-  qa?: PipelineStage & { verdict?: string; report?: string; demo?: string; apng?: string; port?: number };
-  /** Stage 5's artefact: a demo for a feature, a changelog entry for technical work. */
+  /**
+   * Stage 4. Two records share this slot and the card tells them apart by
+   * shape: a browser session for a feature (`verdict`, `report`, `demo`), repo
+   * checks for a chore (`results`, `skipped`, no browser and no recording).
+   * A chore never gets a `demo`, which is why the card can key on it.
+   */
+  qa?: PipelineStage & {
+    verdict?: string;
+    report?: string;
+    demo?: string;
+    apng?: string;
+    port?: number;
+    /** The commands the checker ran, in order. */
+    results?: IdeaCheckResult[];
+    /** The commands it deliberately did not run. */
+    skipped?: IdeaSkippedCheck[];
+    /** When the check run finished (the browser record also carries this). */
+    ranAt?: string;
+  };
+  /** Stage 5's artefact: a demo recording for a feature, a changelog entry otherwise. */
   deliver?: PipelineStage & {
     kind?: string;
     file?: string;
@@ -182,6 +224,11 @@ export type Idea = {
   fingerprint?: string;
   rationale?: string;
   source?: string;
+  /**
+   * Read as a plain string on purpose: records written before the chore rename
+   * say `technical`, and a future host may write a kind this build has never
+   * heard of. `normalizeKind` is what turns that into one of the three kinds.
+   */
   kind?: string;
   evidence?: string[];
   effortHint?: 'small' | 'medium' | 'large';
@@ -323,12 +370,19 @@ export function isPriority(value: unknown): value is IdeaPriority {
 }
 
 /**
- * The swipe gate. A card may be decided only once the host specifier has
- * verified it against the code and written a real spec — a draft is a claim,
- * not a proposal, and a stale card's evidence no longer holds.
+ * The swipe gate. A feature or refactor may be decided only once the host
+ * specifier has verified it against the code and written a real spec — a draft
+ * is a claim, not a proposal, and a stale card's evidence no longer holds.
+ *
+ * A chore is exempt from the specification (`needsSpecification`): the operator
+ * has ruled that maintenance work is not a product decision, so there is no
+ * product claim to verify and nothing for the deck to wait for. Staleness still
+ * blocks it — a withdrawn card is withdrawn for every kind.
  */
 export function isSwipeable(idea: Idea): boolean {
-  return idea.status === 'pending' && (idea.stage ?? 'draft') === 'specified' && !idea.stale;
+  if (idea.status !== 'pending' || idea.stale) return false;
+  if (!needsSpecification(idea.kind)) return true;
+  return (idea.stage ?? 'draft') === 'specified';
 }
 
 /** Why a pending card is not swipable yet, in the operator's words. */
@@ -336,6 +390,11 @@ export function preparingReason(idea: Idea): string {
   if (idea.status !== 'pending') return `already ${idea.status}`;
   if (idea.stale) {
     return 'the evidence this card was built from no longer holds (stale) — it is withdrawn until a cycle re-proposes it';
+  }
+  if (!needsSpecification(idea.kind)) {
+    // Reachable only if a caller asks about a card that is in fact swipable:
+    // no specification is ever written for a chore, so it is never "waiting".
+    return 'maintenance work — chores are not specified, so this one goes straight to a decision';
   }
   const stage = idea.stage ?? 'draft';
   if (stage === 'specifying') return 'the host specifier is verifying it against the code right now';
@@ -453,7 +512,8 @@ export async function setPriority(
 
 export type ProposeInput = {
   title: string;
-  kind?: IdeaKind;
+  /** `technical` is the legacy spelling of `chore`; both are accepted and stored canonically. */
+  kind?: (typeof IDEA_KIND_INPUTS)[number];
   rationale?: string | null;
   persona?: string | null;
   by?: string;
@@ -499,8 +559,8 @@ export async function proposeIdea({
   const clean = String(title ?? '').trim();
   if (!clean) return { ok: false, reason: 'a title is required' };
   if (clean.length > 160) return { ok: false, reason: 'the title must be 160 characters or fewer' };
-  if (!['feature', 'technical', 'refactor'].includes(kind)) {
-    return { ok: false, reason: 'kind must be feature, technical or refactor' };
+  if (!(IDEA_KIND_INPUTS as readonly string[]).includes(kind)) {
+    return { ok: false, reason: 'kind must be feature, refactor or chore' };
   }
 
   return withLock(async () => {
@@ -523,7 +583,8 @@ export async function proposeIdea({
       rationale: rationale && String(rationale).trim() ? String(rationale).trim().slice(0, 1200) : `Proposed by ${by}.`,
       evidence: [`proposed by: ${by}`],
       source: 'human',
-      kind,
+      // Canonical on write: the file carries `chore`, never `technical`.
+      kind: normalizeKind(kind),
       effortHint: 'medium',
       persona: persona && String(persona).trim() ? String(persona).trim().slice(0, 120) : null,
       features,
@@ -562,6 +623,10 @@ export async function proposeIdea({
  * row itself. They are different questions and both are needed: "everything we
  * rejected" is an event question, and it must still show a rejection whose idea
  * was later put back on the deck — filtering that by `status` would hide it.
+ *
+ * `kind` filters on the canonical kind, so the `chore` filter also matches the
+ * records still spelled `technical` — otherwise the chip would go empty on the
+ * day of the rename while the cards stayed on the deck.
  */
 export function timeline(
   ideas: Idea[],
@@ -575,7 +640,7 @@ export function timeline(
   const rows: TimelineRow[] = [];
   for (const idea of ideas) {
     if (status && idea.status !== status) continue;
-    if (kind && (idea.kind ?? 'feature') !== kind) continue;
+    if (kind && normalizeKind(idea.kind) !== kind) continue;
     for (const entry of idea.events ?? []) {
       if (event && entry.kind !== event) continue;
       rows.push({
@@ -587,7 +652,7 @@ export function timeline(
         title: idea.title,
         source: idea.source ?? 'unknown',
         ideaStatus: idea.status,
-        ideaKind: idea.kind ?? 'feature',
+        ideaKind: normalizeKind(idea.kind),
         priority: idea.triage?.priority ?? null,
         comment: entry.kind === 'rejected' ? (idea.decision?.comment ?? null) : null,
       });
@@ -605,13 +670,17 @@ export function timeline(
  * next job, or the operator is deciding in a different order than the work runs.
  * Before triage existed this was score-descending, and for untriaged cards the
  * two are the same ordering (rank = 2000 + (100 - score)).
+ *
+ * The cards come back with their kind canonicalised, because these are exactly
+ * the cards the deck renders: a record still spelled `technical` must reach the
+ * UI as a chore, both in the badge and in every kind-conditional panel.
  */
 export function deckOrder(ideas: Idea[]): Idea[] {
   const rank = (idea: Idea): number =>
     typeof idea.triage?.rank === 'number' ? idea.triage.rank : rankFor('P2', Number(idea.score) || 0);
-  return [...ideas].sort(
-    (a, b) => rank(a) - rank(b) || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
-  );
+  return [...ideas]
+    .sort((a, b) => rank(a) - rank(b) || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))
+    .map((idea) => ({ ...idea, kind: normalizeKind(idea.kind) }));
 }
 
 export type ReviewDecision = 'approved' | 'rejected';
@@ -653,6 +722,9 @@ export function counts(ideas: Idea[]): {
   const pending = ideas.filter((i) => i.status === 'pending');
   return {
     pending: pending.length,
+    // Both sides go through the same kind-aware predicate, which is the point:
+    // a chore is ready the moment it is proposed (it is never specified) and so
+    // can never be counted as "being prepared".
     ready: pending.filter(isSwipeable).length,
     preparing: pending.filter((i) => !isSwipeable(i)).length,
     accepted: ideas.filter((i) => i.status === 'accepted').length,

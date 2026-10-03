@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { proposeIdea, type IdeaKind } from '@/lib/ideation';
+import { IDEA_KIND_INPUTS, proposeIdea } from '@/lib/ideation';
 import { getSession } from '@/lib/session';
 
 /**
@@ -14,7 +14,8 @@ import { getSession } from '@/lib/session';
  */
 export const dynamic = 'force-dynamic';
 
-const KINDS: IdeaKind[] = ['feature', 'technical', 'refactor'];
+/** Legacy-tolerant: `technical` is still accepted and stored canonically as `chore`. */
+type KindInput = (typeof IDEA_KIND_INPUTS)[number];
 
 export async function POST(req: Request): Promise<Response> {
   const session = await getSession().catch(() => null);
@@ -29,10 +30,12 @@ export async function POST(req: Request): Promise<Response> {
 
   const title = typeof body?.title === 'string' ? body.title.trim() : '';
   const rawKind = typeof body?.kind === 'string' ? body.kind : '';
-  const kind: IdeaKind = (KINDS as string[]).includes(rawKind) ? (rawKind as IdeaKind) : 'feature';
+  const kind: KindInput = (IDEA_KIND_INPUTS as readonly string[]).includes(rawKind)
+    ? (rawKind as KindInput)
+    : 'feature';
   if (!title) {
     return NextResponse.json(
-      { error: 'expected {title: string, kind?: feature|technical|refactor, rationale?: string, persona?: string}' },
+      { error: 'expected {title: string, kind?: feature|refactor|chore, rationale?: string, persona?: string}' },
       { status: 400 },
     );
   }

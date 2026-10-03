@@ -6,6 +6,7 @@ import { FileText, Loader2, ShieldQuestion } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { utcStamp } from '@/lib/time';
 import type { Idea, IdeaBand, IdeaFeatures, IdeaPriority } from '@/lib/ideation';
+import { normalizeKind } from '@/lib/ideation-kinds';
 
 /**
  * The card's specification, and the machine's verdict on it.
@@ -51,14 +52,29 @@ const BAND_LABEL: Record<IdeaBand, string> = {
 
 const KIND_TONE: Record<string, string> = {
   feature: 'border-accent text-accent-deep',
-  technical: 'border-ink text-ink',
+  chore: 'border-ink text-ink',
   refactor: 'border-warn text-warn',
 };
 
+const KIND_TITLE: Record<string, string> = {
+  feature: 'a product change — specified and verified against the code before a human decides',
+  chore: 'maintenance work — never specified; QA is repo checks and the deliverable is a changelog',
+  refactor: 'a restructure with no user-visible change',
+};
+
+/**
+ * The card's kind. The badge normalises before it renders, so a record written
+ * before the chore rename can never print `technical` on a card — the legacy
+ * spelling resolves to the same badge a chore gets today.
+ */
 export function KindBadge({ kind }: { kind: string }) {
+  const canonical = normalizeKind(kind);
   return (
-    <span className={clsx('border px-1.5 py-0.5 font-mono text-[10.5px]', KIND_TONE[kind] ?? 'border-hair text-muted')}>
-      {kind}
+    <span
+      className={clsx('border px-1.5 py-0.5 font-mono text-[10.5px]', KIND_TONE[canonical] ?? 'border-hair text-muted')}
+      title={KIND_TITLE[canonical]}
+    >
+      {canonical}
     </span>
   );
 }
