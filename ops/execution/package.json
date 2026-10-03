@@ -1,0 +1,13 @@
+{
+  "name": "@mergecrew/ops-execution",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Sandcastle execution runner for accepted ideas. Kept OUT of the pnpm workspace (pnpm-workspace.yaml only globs apps/* and packages/*) so installing it cannot perturb the mergecrew build.",
+  "type": "module",
+  "scripts": {
+    "runner": "node sandcastle-runner.mjs"
+  },
+  "dependencies": {
+    "@ai-hero/sandcastle": "^0.1.0"
+  }
+}

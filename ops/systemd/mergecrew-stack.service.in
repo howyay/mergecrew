@@ -1,0 +1,23 @@
+[Unit]
+Description=Mergecrew application stack (rootless podman compose, origin of sd.yay.how)
+Documentation=file://__REPO__/HANDOFF.md
+Wants=podman.socket
+After=podman.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__REPO__
+Environment=DOCKER_HOST=unix:///run/user/__UID__/podman/podman.sock
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+# --no-build: the box starts the images that were built earlier; a build here
+# would turn a 45s start into a 10 minute one and needs network at boot.
+ExecStart=__DOCKER__ compose -f docker-compose.full.yml -f docker-compose.override.yml up -d --no-build
+ExecStop=__DOCKER__ compose -f docker-compose.full.yml -f docker-compose.override.yml stop
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=30
+SyslogIdentifier=mergecrew-stack
+
+[Install]
+WantedBy=default.target

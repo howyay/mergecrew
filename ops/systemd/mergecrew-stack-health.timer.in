@@ -1,0 +1,16 @@
+[Unit]
+Description=Periodically verify the mergecrew stack is serving sd.yay.how
+# Deliberately no Requires=/BindsTo= on mergecrew-stack.service: stopping the
+# stack would then also stop this timer, i.e. the guards would disarm
+# themselves exactly when they are needed. On 2026-10-02 that is what happened
+# during the outage drill — the timer went dead and every later probe of
+# "stack up?" was validated by hand instead of by the timer.
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=mergecrew-stack-health.service
+
+[Install]
+WantedBy=timers.target

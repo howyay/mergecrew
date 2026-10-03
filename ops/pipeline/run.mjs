@@ -1,0 +1,520 @@
+#!/usr/bin/env node
+/**
+ * The pipeline: from an idea a human accepted to a review package a human can
+ * approve in a minute.
+ *
+ *   accepted ──▶ PRD ──▶ forge issue ──▶ isolated worktree ──▶ dev agent
+ *            ──▶ autonomous UAT + demo recording ──▶ awaiting review
+ *
+ * Everything is resumable and idempotent: each stage checks whether its artefact
+ * already exists before doing work, so a crash, a restart or a repeated sweep
+ * cannot double-spend an agent run or file the same issue twice.
+ *
+ * Usage
+ *   node ops/pipeline/run.mjs --idea <id> [--stage <name>] [--json]
+ *   node ops/pipeline/run.mjs --idea <id> --retry dev      # after a provider outage
+ *   node ops/pipeline/run.mjs --sweep
+ *   node ops/pipeline/run.mjs --watch [--interval 20]
+ *
+ * Env
+ *   PIPELINE_DEV_AGENT=on      allow the dev-agent stage (default: off — the
+ *                              pipeline still produces PRD/issue/worktree/UAT)
+ *   PIPELINE_MAX_PER_SWEEP=2   ideas advanced per sweep
+ *   PIPELINE_UAT_URL           what UAT points at (default the sd.yay.how origin)
+ *   DEV_AGENT / DEV_AGENT_FLAGS / DEV_AGENT_MODEL   see lib/agent.mjs
+ */
+import { mkdir, readFile, rm } from 'node:fs/promises';
+import path from 'node:path';
+
+import { agentReport, createWorktree, seedWorktree, worktreePath } from './lib/worktree.mjs';
+import { classifyAgentFailure, readAgentLog, spawnDevAgent } from './lib/agent.mjs';
+import { beat, clearStage, logLine, readHeartbeat, readIdeaPipeline, recordStage, writeIdeaPipeline } from './lib/state.mjs';
+import { IdeaStore } from '../ideation/lib/store.mjs';
+
+const REPO = process.env.MERGECREW_REPO ?? path.resolve(new URL('../..', import.meta.url).pathname);
+const STATE_FILE = process.env.IDEATION_STATE_FILE ?? path.join(REPO, 'ops/ideation/state/ideas.json');
+const UAT_URL = process.env.PIPELINE_UAT_URL ?? 'http://127.0.0.1:3100/orgs/demo/ideas';
+const MAX_PER_SWEEP = Math.max(1, Number(process.env.PIPELINE_MAX_PER_SWEEP ?? 2));
+const DEV_AGENT_ENABLED = (process.env.PIPELINE_DEV_AGENT ?? 'off') === 'on';
+// A stage that throws is retried this many times before the idea is parked in
+// `blocked` for a human. Retrying once costs one sweep; not retrying costs a
+// silently stuck idea.
+const MAX_STAGE_ATTEMPTS = Math.max(1, Number(process.env.PIPELINE_STAGE_ATTEMPTS ?? 2));
+const STAGES = ['prd', 'issue', 'worktree', 'dev', 'qa', 'review'];
+
+const log = (msg) => console.log(`${new Date().toISOString()} ${msg}`);
+
+/**
+ * The one place that decides what an idea's *top-level* status is, derived from
+ * its stage records. Before this, each stage wrote its own top-level status (or
+ * none at all), so a card could claim "blocked" while every stage record said
+ * something else — exactly the drift the Ideas page exists to make impossible.
+ */
+export function pipelineStatusFor(stages = {}, { maxAttempts = MAX_STAGE_ATTEMPTS } = {}) {
+  const { prd, issue, worktree, dev, qa, review } = stages;
+  if (review?.status === 'approved') return { status: 'done', reason: null };
+  if (review?.status === 'rejected') {
+    return { status: 'blocked', reason: `human rejected the delivered work${review.note ? `: ${review.note}` : ''}` };
+  }
+  if (qa) {
+    if (qa.verdict === 'fail') return { status: 'blocked', reason: `UAT failed: ${qa.reason ?? 'see the report'}` };
+    if (qa.verdict === 'blocked') return { status: 'blocked', reason: `UAT could not run: ${qa.reason ?? 'unknown'}` };
+    return { status: 'awaiting-review', reason: 'UAT passed; waiting for a human verdict' };
+  }
+  if (dev) {
+    if (dev.status === 'done') return { status: 'running', reason: 'agent reported done; UAT is next' };
+    if (dev.status === 'running') return { status: 'running', reason: null };
+    if (dev.status === 'blocked') return { status: 'blocked', reason: dev.reason ?? 'agent could not start' };
+    return dev.attempts >= maxAttempts
+      ? { status: 'blocked', reason: `agent failed ${dev.attempts} time(s): ${dev.reason ?? 'no report'}` }
+      : { status: 'failed', reason: dev.reason ?? 'agent failed' };
+  }
+  if (worktree) return { status: 'running', reason: null };
+  if (issue) return { status: 'running', reason: null };
+  if (prd) return { status: 'running', reason: null };
+  return { status: 'queued', reason: null };
+}
+
+/** Write the derived status back to the idea record. Never throws. */
+async function syncStatus(store, repo, id, stages) {
+  const derived = pipelineStatusFor(stages);
+  await writeIdeaPipeline(repo, id, derived);
+  await store.setPipeline(id, { ...derived, updatedAt: new Date().toISOString() });
+  return derived;
+}
+
+async function load(name) {
+  try {
+    return await import(name);
+  } catch (err) {
+    throw new Error(`pipeline module ${name} unavailable: ${err?.message ?? err}`);
+  }
+}
+
+const isAlive = (pid) => {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Advance one idea as far as its artefacts allow. Returns the stage it stopped
+ * at plus a one-line reason, which is what the sweep logs and the review page
+ * shows.
+ */
+export async function advanceIdea(
+  idea,
+  { store, repo = REPO, url = UAT_URL, onlyStage = null, forceQa = false, retryStage = null, log: emit = log } = {},
+) {
+  const pipeline = idea.pipeline ?? {};
+  const record = await readIdeaPipeline(repo, idea.id);
+  const stages = record.stages ?? {};
+  const out = { id: idea.id, title: idea.title, did: null, stage: null, status: pipeline.status ?? 'new' };
+
+  // An operator retry (`--retry dev`): drop that stage's record so the checks
+  // below run it again. The stages *after* it go too — they are evidence about
+  // the artefact this retry is about to replace, and a UAT verdict on code that
+  // no longer exists is worse than no verdict at all. The stages before it stay:
+  // the PRD, the issue and the worktree are the record of earlier work, and
+  // redoing them would file a second issue for the same idea.
+  if (retryStage) {
+    if (!STAGES.includes(retryStage)) throw new Error(`unknown stage "${retryStage}" (expected ${STAGES.join('|')})`);
+    const cleared = STAGES.slice(STAGES.indexOf(retryStage));
+    for (const stage of cleared) {
+      await clearStage(repo, idea.id, stage);
+      delete stages[stage];
+    }
+    if (cleared.includes('dev')) {
+      // A report left behind by the failed attempt would make the very next
+      // sweep read "done" before the new agent has written a single line.
+      const dir = stages.worktree?.dir ?? pipeline.worktree?.dir;
+      if (dir) await rm(path.join(repo, dir, 'AGENT_REPORT.md'), { force: true });
+    }
+    // syncStatus below derives the top-level status from the stages, which is
+    // what puts a previously `blocked` card back into the sweep's work list.
+    emit(`retry ${retryStage} for ${idea.id}: cleared ${cleared.join(', ')}`);
+  }
+
+  // Repair drift left by an earlier run (a hand-written status, or one written
+  // by a version of this file that never derived it) before doing anything else.
+  await syncStatus(store, repo, idea.id, stages);
+
+  // 1. PRD -------------------------------------------------------------------
+  if (!stages.prd && (!onlyStage || onlyStage === 'prd')) {
+    const { buildPrd, writePrd, acceptanceFor } = await load('./lib/prd.mjs');
+    const signals = await readGenerationSignals(repo);
+    const prd = buildPrd(idea, { repo, signals });
+    const { file, bytes } = await writePrd({ repo, idea, prd });
+    const acceptance = acceptanceFor(idea);
+    await recordStage(repo, idea.id, 'prd', { file, bytes, acceptance });
+    await writeIdeaPipeline(repo, idea.id, {
+      status: 'running',
+      startedAt: record.startedAt ?? new Date().toISOString(),
+      stages: { ...stages, prd: { file, bytes, acceptance, at: new Date().toISOString() } },
+    });
+    await store.setPipeline(idea.id, {
+      status: 'running',
+      prd: { file, bytes, at: new Date().toISOString() },
+      updatedAt: new Date().toISOString(),
+    });
+    emit(`prd written for ${idea.id}: ${file} (${bytes} bytes)`);
+    return { ...out, did: 'prd', stage: 'prd', prdFile: file };
+  }
+
+  const prdFile = stages.prd?.file ?? pipeline.prd?.file;
+  const prdBody = prdFile ? await readFile(path.join(repo, prdFile), 'utf8').catch(() => null) : null;
+
+  // 2. Forge issue -----------------------------------------------------------
+  if (!stages.issue && (!onlyStage || onlyStage === 'issue')) {
+    const { createIssue, resolveForge } = await load('./lib/issue.mjs');
+    // resolveForge, not detectForge: the git remote says where the code lives,
+    // which is not always where tickets belong (mirrors and repositories with
+    // issues disabled are both normal). ISSUE_TRACKER decides, and it defaults
+    // to exactly the old remote-derived behaviour.
+    const forge = resolveForge({ repo });
+    const issue = await createIssue({ idea, prd: prdBody ?? idea.rationale, forge, repo });
+    await recordStage(repo, idea.id, 'issue', issue);
+    await writeIdeaPipeline(repo, idea.id, { stages: { ...(await readIdeaPipeline(repo, idea.id)).stages, issue } });
+    await store.setPipeline(idea.id, { issue, updatedAt: new Date().toISOString() });
+    emit(`issue for ${idea.id}: ${issue.status}${issue.url ? ` ${issue.url}` : ` (${issue.reason})`}`);
+    return { ...out, did: 'issue', stage: 'issue', issue: issue.status };
+  }
+
+  // 3. Isolated worktree -----------------------------------------------------
+  if (!stages.worktree && (!onlyStage || onlyStage === 'worktree')) {
+    const acceptance = stages.prd?.acceptance ?? [];
+    const created = await createWorktree({ repo, idea, log: emit });
+    if (created.status === 'failed') {
+      await recordStage(repo, idea.id, 'worktree', created);
+      await store.setPipeline(idea.id, { status: 'blocked', worktree: created, updatedAt: new Date().toISOString() });
+      return { ...out, did: 'worktree', stage: 'worktree', status: 'blocked', reason: created.reason };
+    }
+    const seeded = await seedWorktree({ dir: created.dir, idea, prd: prdBody, acceptance });
+    const worktree = { ...created, dir: path.relative(repo, created.dir), taskFile: path.relative(repo, seeded.taskFile) };
+    await recordStage(repo, idea.id, 'worktree', worktree);
+    await writeIdeaPipeline(repo, idea.id, { stages: { ...(await readIdeaPipeline(repo, idea.id)).stages, worktree } });
+    await store.setPipeline(idea.id, { worktree, updatedAt: new Date().toISOString() });
+    emit(`worktree ready for ${idea.id}: ${worktree.dir} (${worktree.status})`);
+    return { ...out, did: 'worktree', stage: 'worktree', worktree: worktree.dir };
+  }
+
+  // 4. Dev agent -------------------------------------------------------------
+  const worktreeRel = stages.worktree?.dir ?? pipeline.worktree?.dir;
+  const worktreeAbs = worktreeRel ? path.join(repo, worktreeRel) : worktreePath(repo, idea.id);
+
+  if (stages.dev?.status === 'running') {
+    const report = await agentReport({ dir: worktreeAbs });
+    if (report) {
+      const dev = { status: 'done', report: path.relative(repo, report.file), endedAt: new Date().toISOString() };
+      await recordStage(repo, idea.id, 'dev', dev);
+      const merged = (await readIdeaPipeline(repo, idea.id)).stages;
+      await writeIdeaPipeline(repo, idea.id, { stages: merged });
+      await store.setPipeline(idea.id, { dev, updatedAt: new Date().toISOString() });
+      emit(`dev agent for ${idea.id} reported (${dev.report})`);
+      return { ...out, did: 'dev', stage: 'dev', status: 'dev-done' };
+    }
+    if (!isAlive(stages.dev.pid)) {
+      const tail = (await readAgentLog(path.join(repo, stages.dev.logFile ?? ''))) ?? '';
+      // "Ran and did not finish" and "never reached a model" are different
+      // problems: retrying the second one just burns tokens on an outage.
+      const failure = classifyAgentFailure(tail);
+      const outage = failure.kind === 'provider-outage';
+      const reason = outage
+        ? `dev agent could not reach its model provider: ${failure.detail}`
+        : 'agent exited without writing AGENT_REPORT.md';
+      const dev = {
+        ...stages.dev,
+        status: 'failed',
+        endedAt: new Date().toISOString(),
+        reason,
+        failureKind: failure.kind,
+        logTail: tail.slice(-1500),
+      };
+      await recordStage(repo, idea.id, 'dev', dev);
+      // The top-level status is recomputed from the stages by syncStatus(); this
+      // write is what keeps the deck honest in the meantime, with the reason
+      // spelled out so the card says *why* it stopped moving.
+      await store.setPipeline(idea.id, {
+        dev,
+        status: 'blocked',
+        reason,
+        updatedAt: new Date().toISOString(),
+      });
+      emit(`dev agent for ${idea.id} died — ${reason} (see ${stages.dev.logFile})`);
+      return { ...out, did: 'dev', stage: 'dev', status: 'blocked', reason };
+    }
+    return { ...out, did: null, stage: 'dev', status: 'dev-running' };
+  }
+
+  if (!stages.dev && (!onlyStage || onlyStage === 'dev')) {
+    if (!DEV_AGENT_ENABLED) {
+      emit(`dev stage skipped for ${idea.id}: PIPELINE_DEV_AGENT is off (set it to on to spawn agents)`);
+      return { ...out, did: 'dev', stage: 'dev', status: 'dev-skipped', reason: 'PIPELINE_DEV_AGENT=off' };
+    }
+    const started = await spawnDevAgent({
+      worktree: worktreeAbs,
+      idea,
+      logDir: path.join(repo, 'ops/pipeline/state/agent-logs'),
+      log: emit,
+    });
+    const dev = { ...started, logFile: started.logFile ? path.relative(repo, started.logFile) : null };
+    await recordStage(repo, idea.id, 'dev', dev);
+    await store.setPipeline(idea.id, { dev, updatedAt: new Date().toISOString() });
+    return { ...out, did: 'dev', stage: 'dev', status: started.status };
+  }
+
+  // 5. QA: autonomous UAT + demo recording -----------------------------------
+  // The gate is normally "the agent reported done". --force-qa is the operator
+  // asking for the UAT right now (to see a demo of the current state, or to
+  // re-record after a UI change); it does not change what the checks assert,
+  // and the record says who ran it.
+  const qaReady = stages.dev?.status === 'done' || (forceQa && Boolean(stages.dev));
+  if (!stages.qa && qaReady && (!onlyStage || onlyStage === 'qa')) {
+    const { runUat, uatMarkdown } = await load('./lib/uat.mjs');
+    const outDir = path.join(repo, 'ops/pipeline/uat', idea.id);
+    await mkdir(outDir, { recursive: true });
+    const acceptance = stages.prd?.acceptance ?? [];
+    // Every step here is a real requirement, so none of them are optional: the
+    // recorder has no `optional` semantics on purpose (a step that may fail
+    // silently is a step that verifies nothing), and a QA gate that waves a
+    // missing card through would be the exact theatre this pipeline replaces.
+    const steps = [
+      { name: 'ideas page loads', action: 'expect', selector: 'main', text: 'Ideas' },
+      { name: `the accepted card for ${idea.id} is on the page`, action: 'expect', selector: 'body', text: idea.id },
+    ];
+    const result = await runUat({ idea, url, outDir, steps, acceptance, log: emit });
+    const reportFile = path.join(outDir, 'uat.md');
+    const uat = {
+      verdict: result.verdict,
+      ok: result.ok,
+      report: path.relative(repo, reportFile),
+      // runUat returns objects for the animation and strings for the files it
+      // wrote; path.relative on the object threw the first time this stage ever
+      // ran for real, which is exactly what the QA gate is for.
+      demo: result.apng?.file ? path.relative(repo, result.apng.file) : null,
+      frames: result.apng?.frames ?? 0,
+      player: result.demo ? path.relative(repo, result.demo) : null,
+      durationMs: result.durationMs,
+      consoleErrors: result.consoleErrors?.length ?? 0,
+      // Who asked for this run, and what the gate was standing on. A manual run
+      // is still a real run, but the record must not imply the agent finished.
+      source: forceQa && stages.dev?.status !== 'done' ? 'manual' : 'pipeline',
+      devStatus: stages.dev?.status ?? null,
+      // The PRD's acceptance criteria are prose for a human to judge at the
+      // review gate below; UAT asserts the product surface, not that list. Say
+      // so here rather than letting a green UAT read as "every criterion passed".
+      acceptance,
+      acceptanceChecked: false,
+      ranAt: new Date().toISOString(),
+    };
+    await recordStage(repo, idea.id, 'qa', uat);
+    await store.setPipeline(idea.id, { qa: uat, updatedAt: new Date().toISOString() });
+    emit(`UAT for ${idea.id}: ${uat.verdict} (report ${uat.report}${uat.demo ? `, demo ${uat.demo}` : ''})`);
+    void uatMarkdown;
+    return { ...out, did: 'qa', stage: 'qa', status: uat.verdict, report: uat.report, demo: uat.demo };
+  }
+
+  // 6. Review gate: the second human gate ------------------------------------
+  if (stages.qa && (!onlyStage || onlyStage === 'review')) {
+    const human = idea.review ?? null;
+    const decided = human?.decision === 'approved' || human?.decision === 'rejected';
+    if (!decided && stages.review?.status === 'awaiting-review') {
+      // Already parked for a human; do not re-log it on every sweep.
+      return out;
+    }
+
+    const summary = {
+      status: decided
+        ? human.decision === 'approved'
+          ? 'approved'
+          : 'rejected'
+        : 'awaiting-review',
+      finishedAt: new Date().toISOString(),
+      prd: stages.prd?.file ?? null,
+      issue: stages.issue?.url ?? stages.issue?.file ?? null,
+      worktree: stages.worktree?.dir ?? null,
+      dev: stages.dev?.status ?? null,
+      qa: stages.qa?.verdict ?? null,
+      demo: stages.qa?.demo ?? null,
+    };
+    if (decided) {
+      // The pipeline never merges or deploys: approval records the verdict and
+      // frees the branch for a human to take. That boundary is deliberate.
+      summary.decision = human.decision;
+      summary.by = human.by ?? null;
+      summary.note = human.note ?? null;
+      summary.reviewedAt = new Date().toISOString();
+    }
+    await recordStage(repo, idea.id, 'review', summary);
+    await store.setPipeline(idea.id, {
+      review: summary,
+      status: decided ? (human.decision === 'approved' ? 'done' : 'blocked') : 'awaiting-review',
+      reason:
+        decided && human.decision === 'rejected'
+          ? `human rejected the delivered work${human.note ? `: ${human.note}` : ''}`
+          : null,
+      finishedAt: decided ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString(),
+    });
+    emit(
+      decided
+        ? `${idea.id} review ${human.decision} by ${human.by ?? 'human'} (${summary.qa} UAT, branch ${summary.worktree ?? 'none'})`
+        : `${idea.id} is awaiting human review (${summary.qa} UAT, demo ${summary.demo ?? 'none'})`,
+    );
+    return { ...out, did: 'review', stage: 'review', status: summary.status };
+  }
+
+  return out;
+}
+
+async function readGenerationSignals(repo) {
+  try {
+    const state = JSON.parse(await readFile(path.join(repo, 'ops/ci/state/last-run.json'), 'utf8'));
+    return { ci: { status: state.status, head: state.head, failedChecks: (state.checks ?? []).filter((c) => c.status === 'fail').map((c) => c.cmd) } };
+  } catch {
+    return { ci: null };
+  }
+}
+
+/**
+ * Ideas that are accepted and not yet approved/done — the pipeline's work list.
+ *
+ * `blocked` means a stage decided it cannot proceed without a human (no forge
+ * token, no agent binary). `failed` means a stage threw: usually a bug or a
+ * transient error, so it is retried — but only so many times, because a stage
+ * that throws every sweep would burn an agent run every sweep.
+ */
+export async function workList(store, { maxAttempts = MAX_STAGE_ATTEMPTS } = {}) {
+  const ideas = await store.list();
+  return ideas.filter((i) => {
+    if (i.status !== 'accepted') return false;
+    const p = i.pipeline ?? {};
+    // Parked for a human: back to work only once that human has answered.
+    if (p.status === 'awaiting-review') return Boolean(i.review?.decision);
+    if (['done', 'blocked'].includes(p.status)) return false;
+    if (p.status === 'failed' && (p.attempts ?? 0) >= maxAttempts) return false;
+    return true;
+  });
+}
+
+export async function sweep({ store, repo = REPO, url = UAT_URL, max = MAX_PER_SWEEP, log: emit = log } = {}) {
+  const queue = await workList(store);
+  const done = [];
+  for (const idea of queue.slice(0, max)) {
+    try {
+      done.push(await advanceIdea(idea, { store, repo, url, log: emit }));
+    } catch (err) {
+      const reason = err?.message ?? String(err);
+      const attempts = (idea.pipeline?.attempts ?? 0) + 1;
+      const status = attempts >= MAX_STAGE_ATTEMPTS ? 'blocked' : 'failed';
+      const patch = { status, reason, error: reason, attempts, updatedAt: new Date().toISOString() };
+      await writeIdeaPipeline(repo, idea.id, { status, error: reason, attempts });
+      await store.setPipeline(idea.id, patch);
+      emit(
+        `pipeline error for ${idea.id} (attempt ${attempts}/${MAX_STAGE_ATTEMPTS}, ${status}): ${reason}`,
+      );
+      done.push({ id: idea.id, status: 'error', reason, attempts, nextStatus: status });
+    }
+  }
+  await beat(repo, { mode: 'sweep', queue: queue.length, advanced: done.length, devAgent: DEV_AGENT_ENABLED });
+  return { queue: queue.length, advanced: done };
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const has = (flag) => argv.includes(flag);
+  const value = (flag, fallback = null) => {
+    const i = argv.indexOf(flag);
+    return i >= 0 ? argv[i + 1] : fallback;
+  };
+  const asJson = has('--json');
+  const store = new IdeaStore(STATE_FILE);
+
+  if (has('--help')) {
+    console.log(
+      'usage: run.mjs --idea <id> [--stage <s>] [--force-qa] [--retry <s>] [--json] | --sweep | --watch [--interval N]',
+    );
+    return;
+  }
+
+  if (has('--idea')) {
+    const id = value('--idea');
+    const idea = await store.get(id);
+    if (!idea) {
+      console.error(`unknown idea ${id}`);
+      process.exit(2);
+    }
+    const result = await advanceIdea(idea, {
+      store,
+      onlyStage: value('--stage'),
+      forceQa: has('--force-qa'),
+      retryStage: value('--retry'),
+      log: asJson ? () => {} : log,
+    });
+    if (asJson) console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (has('--sweep')) {
+    const result = await sweep({ store, log: asJson ? () => {} : log });
+    if (asJson) console.log(JSON.stringify(result, null, 2));
+    else log(`sweep: queue ${result.queue}, advanced ${result.advanced.length}`);
+    return;
+  }
+
+  if (has('--watch')) {
+    const intervalMs = Math.max(5, Number(value('--interval', process.env.PIPELINE_INTERVAL_SECONDS ?? 20))) * 1000;
+    log(`pipeline watch repo=${REPO} state=${STATE_FILE} interval=${intervalMs / 1000}s devAgent=${DEV_AGENT_ENABLED ? 'on' : 'off'}`);
+    let stop = false;
+    let wake = null;
+    const sleep = (ms) =>
+      new Promise((resolve) => {
+        const t = setTimeout(() => {
+          wake = null;
+          resolve();
+        }, ms);
+        wake = () => {
+          clearTimeout(t);
+          wake = null;
+          resolve();
+        };
+      });
+    for (const sig of ['SIGTERM', 'SIGINT']) {
+      process.on(sig, () => {
+        log(`${sig} received — stopping`);
+        stop = true;
+        wake?.();
+      });
+    }
+    let ticks = 0;
+    while (!stop) {
+      try {
+        const result = await sweep({ store });
+        ticks += 1;
+        if (ticks % 10 === 0) {
+          const hb = await readHeartbeat(REPO);
+          log(`alive: ${ticks} sweeps, queue ${result.queue}, last beat ${hb?.at ?? 'n/a'}`);
+        }
+      } catch (err) {
+        log(`sweep failed: ${err?.message ?? err}`);
+      }
+      await sleep(intervalMs);
+    }
+    log('pipeline watch stopped');
+    return;
+  }
+
+  console.error('nothing to do — pass --idea <id>, --sweep or --watch (see --help)');
+  process.exit(2);
+}
+
+const invokedDirectly =
+  process.argv[1] && (await import('node:url')).fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (invokedDirectly) await main();
+
+export { STAGES, DEV_AGENT_ENABLED, MAX_STAGE_ATTEMPTS };
+void logLine;

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <title>Mergecrew 想法分诊台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot" aria-hidden="true"></span>
+        <h1>想法分诊台</h1>
+        <span class="sub">自动生成 · 规则评分 · 人工 swipe</span>
+      </div>
+      <div class="meta">
+        <span id="ci-pill" class="pill pill-idle">CI —</span>
+        <span id="gen-pill" class="pill pill-idle">生成器 —</span>
+        <button id="refresh" class="ghost" type="button" title="重新读取">刷新</button>
+        <button id="generate" class="ghost" type="button" title="立刻跑一次生成周期">生成</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="deck" aria-live="polite">
+        <div id="stack" class="stack"></div>
+        <p id="empty" class="empty">没有待决定的想法。点「生成」跑一次，或等下一个周期。</p>
+      </section>
+
+      <section class="controls">
+        <button id="reject" class="action reject" type="button"><kbd>←</kbd> 拒绝</button>
+        <button id="undo" class="action undo" type="button"><kbd>U</kbd> 撤销</button>
+        <button id="accept" class="action accept" type="button">接受 <kbd>→</kbd></button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>已接受的队列</h2>
+          <span id="accepted-count" class="counter">0</span>
+        </div>
+        <ul id="accepted" class="accepted"></ul>
+        <p class="hint" id="executor-hint"></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>已拒绝</h2>
+          <span id="rejected-count" class="counter">0</span>
+        </div>
+        <ul id="rejected" class="rejected"></ul>
+        <p class="hint">被拒绝的指纹不会再次出现（store 按 fingerprint 去重）。</p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+[Unit]
+Description=Mergecrew ideation, idea scoring and swipe decision service
+Documentation=file://__REPO__/ops/README.md
+After=network-online.target
+Wants=mergecrew-ci.service
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+Environment=MERGECREW_REPO=__REPO__
+Environment=IDEATION_HOST=127.0.0.1
+Environment=IDEATION_PORT=7788
+Environment=IDEATION_INTERVAL_MINUTES=360
+Environment=EXECUTOR=off
+ExecStart=__NODE__ __REPO__/ops/ideation/server.mjs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mergecrew-ideation
+
+[Install]
+WantedBy=default.target

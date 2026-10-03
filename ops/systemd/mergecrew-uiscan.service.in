@@ -1,0 +1,20 @@
+[Unit]
+Description=Scan the mergecrew operator pages for hydration mismatches and console errors
+Documentation=file:__REPO__/ops/README.md
+# Wants= (not Requires=) and only on the service: the stack has to be up for
+# the scan to mean anything, but a `stop` of the stack must never stop the
+# guards themselves — see the note in mergecrew-stack-health.timer.in.
+Wants=mergecrew-stack.service
+After=mergecrew-stack.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO__
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+Environment=CHROME_PATH=/run/current-system/sw/bin/chromium
+# Exits 1 when a page logs a React hydration error (#418) or any console error,
+# so a regression shows up as a failed unit in `install.sh status` and in the
+# journal instead of only in someone's browser console.
+ExecStart=__NODE__ __REPO__/ops/ci/tools/hydration-scan.mjs --out __REPO__/ops/ci/state/hydration-report.json
+TimeoutStartSec=600
+SyslogIdentifier=mergecrew-uiscan

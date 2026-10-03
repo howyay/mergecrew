@@ -1,0 +1,22 @@
+[Unit]
+Description=Mergecrew primitive CI/CD loop
+Documentation=file://__REPO__/ops/README.md
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+Environment=MERGECREW_REPO=__REPO__
+Environment=CI_POLL_SECONDS=30
+Environment=CI_CHECK_TIMEOUT_SECONDS=1800
+ExecStart=__NODE__ __REPO__/ops/ci/ci-loop.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mergecrew-ci
+
+[Install]
+WantedBy=default.target
