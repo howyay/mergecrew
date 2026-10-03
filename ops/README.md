@@ -277,7 +277,7 @@ as it honestly can. Stages, in order:
 | 1 | `prd` | `ops/pipeline/prd/<id>.md` | — (deterministic, from the idea + evidence) |
 | 2 | `issue` | Forgejo/GitHub issue, else `ops/pipeline/issues/<id>.md` | no token → local file, the card says so |
 | 3 | `worktree` | `.worktrees/<id>` on `idea/<id>-<slug>` | git refuses |
-| 4 | `dev` | `TASK.md` + `PRD.md` in the worktree, one agent per feature | agent exits without `AGENT_REPORT.md` |
+| 4 | `dev` | `TASK.md` + `PRD.md` in the worktree, one agent per feature; then the pipeline commits the tree on the idea branch | agent exits without `AGENT_REPORT.md` |
 | 5 | `qa` | `ops/pipeline/uat/<id>/{uat.md,index.html,demo.png}` | a strict check fails |
 | 6 | `review` | the human verdict, consumed from the deck | always waits for a person |
 
@@ -325,6 +325,39 @@ sets `DEV_AGENT=dsh` and `DSH_BIN=<path>` rather than leaving it to `auto`
 it: `dsh headless "Read TASK.md and do the task it describes."` in a scratch dir
 read the file, wrote what it asked for, verified it with `wc -c`, and exited 0.
 Switch that one line back the day the gateway serves `claude` again.
+
+The agent does not get the pipeline's own environment: `childEnv` strips every
+`PIPELINE_*` variable before spawning. A dev agent that inherits
+`PIPELINE_DEV_AGENT=on` runs this repository's own test suite under a different
+contract than the suite documents (`run.test.mjs` assumes the variable is off),
+so the pipeline would fail the agent's verification for a reason that has nothing
+to do with its change. The agent reported exactly that on 2026-10-03.
+
+### What the worktree gets, and who commits
+
+`git worktree add` checks out `HEAD`, and an idea can name a file that is not in
+it — the first real dev agent spent its run hunting for `ops/ci/checks.conf`,
+which existed only as an untracked directory in the operator's checkout (it is
+tracked now, as of `a0d18d9`). `seedOps` therefore copies the `ops/` tooling in,
+reported as `opsFiles` on the worktree stage. It copies the tooling and nothing
+else — no `state/`, no `queue/`, no `node_modules/`, no `*.env`, not
+`deploy.sh` — and it never overwrites a file that is already there, so a re-seed
+cannot quietly revert the very edit under review.
+
+The agent cannot commit. It runs inside a file sandbox rooted at its worktree,
+while git's per-worktree index lives in `<repo>/.git/worktrees/<id>/`:
+
+```console
+$ git add ops/ci/checks.conf
+fatal: Unable to create '.../.git/worktrees/idea-740f1748/index.lock': Permission denied
+```
+
+The pipeline runs outside that sandbox, so **the pipeline commits** the agent's
+tree on the idea branch when `AGENT_REPORT.md` appears, with an identity passed
+per command (`user.name=mergecrew agent`, and `commit.gpgsign=false` — this host
+has signing configured with a key it cannot read). The dev record then carries
+`commit`, `commitFiles` and `durationMs`, and keeps `provider`/`command`/`pid`
+so the deck can say *which* agent did the work instead of "agent".
 
 ### Where issues are filed
 

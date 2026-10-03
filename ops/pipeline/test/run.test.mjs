@@ -198,3 +198,65 @@ test('--retry dev clears only the dev stage, deletes a stale report, and un-bloc
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * The dev→done transition is the moment the pipeline takes ownership of the
+ * agent's work. Two things have to survive it: *which* agent did the work (the
+ * record used to be replaced by `{status, report}`, so a finished card said
+ * "agent · done" and nobody could tell dsh from claude), and the work itself —
+ * a dev agent runs inside a file sandbox that cannot write
+ * `.git/worktrees/<id>/index.lock`, so "commit your work" is an instruction it
+ * cannot follow. The pipeline commits instead, and the review gate then has a
+ * diff to read rather than a pile of untracked files.
+ */
+test('dev done keeps the provider and commits the agent\'s work on its branch', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'mergecrew-devdone-'));
+  const { dir, store } = await storeWith([{ id: 'shipped', title: 'shipped' }]);
+  const worktree = '.worktrees/shipped';
+  try {
+    await run('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    await store.decide('shipped', 'accepted');
+    await store.setPipeline('shipped', { status: 'running' });
+    await mkdir(path.join(repo, 'ops/pipeline/state'), { recursive: true });
+    await mkdir(path.join(repo, worktree, 'ops/ci'), { recursive: true });
+    await writeFile(path.join(repo, worktree, 'AGENT_REPORT.md'), '# did it\n', 'utf8');
+    await writeFile(path.join(repo, worktree, 'ops/ci/checks.conf'), 'pnpm --filter @mergecrew/domain test\n', 'utf8');
+    await writeFile(
+      path.join(repo, 'ops/pipeline/state/shipped.json'),
+      JSON.stringify({
+        id: 'shipped',
+        status: 'running',
+        stages: {
+          prd: { file: 'ops/pipeline/prd/shipped.md', acceptance: ['a'] },
+          issue: { status: 'created', url: 'https://example.test/issues/2' },
+          worktree: { status: 'created', dir: worktree },
+          dev: {
+            status: 'running',
+            provider: 'dsh',
+            command: 'dsh headless Read TASK.md and do the task it describes.',
+            pid: 999999,
+            logFile: 'ops/pipeline/state/agent-logs/shipped.agent.log',
+            startedAt: new Date(Date.now() - 60_000).toISOString(),
+          },
+        },
+      }),
+      'utf8',
+    );
+
+    const out = await advanceIdea(await store.get('shipped'), { store, repo, onlyStage: 'dev' });
+    assert.equal(out.status, 'dev-done');
+
+    const record = JSON.parse(await readFile(path.join(repo, 'ops/pipeline/state/shipped.json'), 'utf8'));
+    const dev = record.stages.dev;
+    assert.equal(dev.status, 'done');
+    assert.equal(dev.provider, 'dsh', 'the deck must be able to name the agent that ran');
+    assert.equal(dev.command.includes('dsh headless'), true);
+    assert.equal(dev.commitStatus, 'committed');
+    assert.match(dev.commit, /^[0-9a-f]{40}$/);
+    assert.equal(dev.commitFiles >= 2, true);
+    assert.equal(typeof dev.durationMs, 'number');
+    assert.equal((await run('git', ['log', '-1', '--format=%s'], { cwd: path.join(repo, worktree) })).stdout.trim(), 'shipped: shipped');
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});

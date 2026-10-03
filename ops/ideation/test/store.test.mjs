@@ -176,3 +176,14 @@ test('addMany marks new cards as supported', async (t) => {
   assert.equal(added.length, 1);
   assert.equal((await store.get('x')).stale, false, 'a card born from this cycle is supported by definition');
 });
+
+/**
+ * A store constructed with the wrong argument used to read an empty deck and
+ * silently persist nothing, so a caller could "save" state that never existed.
+ * The constructor is the only place that can catch it.
+ */
+test('IdeaStore refuses a state file that is not a path', () => {
+  assert.throws(() => new IdeaStore({ file: '/tmp/ideas.json' }), /needs a state file path/);
+  assert.throws(() => new IdeaStore(), /needs a state file path/);
+  assert.throws(() => new IdeaStore(''), /needs a state file path/);
+});

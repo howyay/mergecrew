@@ -98,6 +98,24 @@ export function buildCommand({ provider, bin, promptFile = DEFAULT_PROMPT_FILE, 
 }
 
 /**
+ * The environment the agent gets. The pipeline's own control knobs are stripped:
+ * a dev agent that inherits `PIPELINE_DEV_AGENT=on` runs the pipeline's own test
+ * suite under a different contract — `ops/pipeline/test/run.test.mjs` documents
+ * its assumption that the variable is off, so the agent sees a real spawn where
+ * the test expects `dev-skipped` and the suite fails for a reason that has
+ * nothing to do with its change (observed 2026-10-03, from inside a dev agent).
+ */
+export function childEnv(env = process.env, idea = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith('PIPELINE_')) continue;
+    out[key] = value;
+  }
+  if (idea.id) out.MERGECREW_IDEA_ID = idea.id;
+  return out;
+}
+
+/**
  * Start the agent and return immediately (the caller is a long-running sweep,
  * it must not block for the whole feature). Output goes to the idea's log file
  * so the pipeline — and the human reviewing it — can see what happened.
@@ -132,7 +150,7 @@ export async function spawnDevAgent({
   const child = spawnImpl(command, args, {
     cwd: worktree,
     detached: true,
-    env: { ...env, MERGECREW_IDEA_ID: idea.id },
+    env: childEnv(env, idea),
     stdio: ['ignore', fd.fd, fd.fd],
   });
   await fd.close().catch(() => {});

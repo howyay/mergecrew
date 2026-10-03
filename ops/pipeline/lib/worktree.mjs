@@ -119,10 +119,15 @@ const OPS_SKIP = new Set(['node_modules', 'state', 'queue', '.git']);
  * So the untracked tooling is copied in: the tooling, never the runtime state
  * (state/, queue/, node_modules/, *.env, deploy.sh — the worktree must not
  * become a second operator with its own tokens).
+ *
+ * Existing files are never overwritten: `ops/ci/checks.conf` is exactly what a
+ * dev agent is asked to edit, and a re-seed that clobbered it would silently
+ * revert the work under review.
  */
 export async function seedOps({ repo, dir, source = path.join(repo, 'ops'), log = () => {} } = {}) {
   const target = path.join(dir, 'ops');
   let files = 0;
+  let kept = 0;
   const walk = async (from, to) => {
     await mkdir(to, { recursive: true });
     for (const entry of await readdir(from, { withFileTypes: true })) {
@@ -131,19 +136,65 @@ export async function seedOps({ repo, dir, source = path.join(repo, 'ops'), log 
       const dst = path.join(to, entry.name);
       if (entry.isDirectory()) await walk(src, dst);
       else if (entry.isFile()) {
+        if (await exists(dst)) {
+          kept += 1;
+          continue;
+        }
         await copyFile(src, dst);
         files += 1;
       }
     }
   };
   try {
-    if (!(await exists(source))) return { status: 'skipped', files: 0, reason: 'no ops/ in this checkout' };
+    if (!(await exists(source))) return { status: 'skipped', files: 0, kept: 0, reason: 'no ops/ in this checkout' };
     await walk(source, target);
   } catch (error) {
-    return { status: 'failed', files, reason: error.message };
+    return { status: 'failed', files, kept, reason: error.message };
   }
-  log(`seeded ${files} untracked ops/ file(s) into ${path.relative(repo, dir)} — the acceptance oracle the task cites`);
-  return { status: 'seeded', files };
+  if (files) log(`seeded ${files} ops/ file(s) into ${path.relative(repo, dir)} — the acceptance oracle the task cites`);
+  return { status: files ? 'seeded' : 'present', files, kept };
+}
+
+/**
+ * Commit what the agent left behind, on its own branch.
+ *
+ * TASK.md tells the agent to commit, and it cannot: a dev agent runs inside a
+ * file sandbox whose writable root is the worktree, while git's per-worktree
+ * index lives in `<repo>/.git/worktrees/<id>/` — outside it:
+ *
+ *   $ git add ops/ci/checks.conf
+ *   fatal: Unable to create '.../.git/worktrees/idea-740f1748/index.lock':
+ *   Permission denied
+ *
+ * (observed 2026-10-03; the agent worked around it by writing a .patch file.)
+ * The pipeline runs outside that sandbox, so the pipeline commits. That also
+ * gives the review gate a diff to read instead of a pile of untracked files.
+ *
+ * The identity is passed per command: this host has no global git user, and a
+ * commit that fails on "Author identity unknown" is a commit that never happened.
+ */
+export async function commitWorktree({ dir, idea, exec = DEFAULT_EXEC, log = () => {} } = {}) {
+  const add = await exec('git', ['add', '-A'], dir);
+  if (add.code !== 0) {
+    return { status: 'failed', sha: null, reason: `git add failed (${add.code}): ${(add.stderr || add.stdout).trim().slice(0, 300)}` };
+  }
+  const pending = await exec('git', ['status', '--porcelain'], dir);
+  const files = pending.stdout.split('\n').filter((l) => l.trim()).length;
+  if (!files) return { status: 'clean', sha: null, files: 0, reason: 'nothing to commit' };
+
+  const message = `${idea.id}: ${idea.title}`;
+  const commit = await exec(
+    'git',
+    ['-c', 'commit.gpgsign=false', '-c', 'user.name=mergecrew agent', '-c', 'user.email=agent@mergecrew.local', 'commit', '-q', '-m', message],
+    dir,
+  );
+  if (commit.code !== 0) {
+    return { status: 'failed', sha: null, files, reason: `git commit failed (${commit.code}): ${(commit.stderr || commit.stdout).trim().slice(0, 300)}` };
+  }
+  const head = await exec('git', ['rev-parse', 'HEAD'], dir);
+  const sha = head.stdout.trim();
+  log(`committed ${files} file(s) as ${sha.slice(0, 8)} on the idea branch`);
+  return { status: 'committed', sha, files, subject: message };
 }
 
 /** Put the PRD and the agent's briefing inside the worktree, where it works. */

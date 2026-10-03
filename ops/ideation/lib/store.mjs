@@ -38,6 +38,14 @@ export class IdeaStore {
   #lock = Promise.resolve();
 
   constructor(file) {
+    // Every write goes through this path. An options object (`new IdeaStore({file})`)
+    // used to be accepted silently: read() swallowed the resulting TypeError,
+    // returned an empty deck, and setPipeline() then found no such idea and wrote
+    // nothing — a caller that reported success while the file never changed
+    // (hit 2026-10-03 from an operator script). Fail at construction instead.
+    if (typeof file !== 'string' || !file) {
+      throw new TypeError(`IdeaStore needs a state file path (got ${typeof file})`);
+    }
     this.#file = file;
   }
 

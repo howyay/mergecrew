@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { agentReport, branchName, createWorktree, listWorktrees, removeWorktree, seedOps, seedWorktree, worktreePath } from '../lib/worktree.mjs';
+import { agentReport, branchName, commitWorktree, createWorktree, listWorktrees, removeWorktree, seedOps, seedWorktree, worktreePath } from '../lib/worktree.mjs';
 
 const run = promisify(execFile);
 
@@ -158,10 +158,15 @@ test('seedOps copies the untracked oracle into the worktree, never state or secr
     await writeFile(path.join(repo, 'ops', 'pipeline', 'forgejo.env'), 'FORGEJO_TOKEN=secret\n', 'utf8');
     await writeFile(path.join(repo, 'ops', 'ci', 'deploy.sh'), '#!/bin/sh\ncurl -H "token: secret"\n', 'utf8');
 
-    const { dir } = await createWorktree({ repo, idea });
+    // createWorktree seeds as part of creating: the agent must never be handed a
+    // tree where the file its task names is missing.
+    const created = await createWorktree({ repo, idea });
+    const { dir } = created;
+    assert.equal(created.opsFiles, 1);
     const seeded = await seedOps({ repo, dir });
 
-    assert.equal(seeded.status, 'seeded');
+    assert.equal(seeded.status, 'present');
+    assert.equal(seeded.files, 0);
     assert.equal(existsSync(path.join(dir, 'ops', 'ci', 'checks.conf')), true);
     // The oracle is readable, and reading it does not hand over the operator's
     // runtime state or the token the deploy hook uses.
@@ -182,6 +187,65 @@ test('seedOps reports skipped when the checkout has no ops/ at all', async () =>
     const seeded = await seedOps({ repo, dir });
     assert.equal(seeded.status, 'skipped');
     assert.equal(seeded.files, 0);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The oracle is the file the agent is told to edit. A re-seed that overwrote it
+ * would revert the work under review and call it a fresh checkout — the exact
+ * failure mode that makes an approval meaningless.
+ */
+test('seedOps never overwrites a file the agent already edited', async () => {
+  const repo = await tempRepo();
+  try {
+    await mkdir(path.join(repo, 'ops', 'ci'), { recursive: true });
+    await writeFile(path.join(repo, 'ops', 'ci', 'checks.conf'), 'node --test "ops/**/test/*.test.mjs"\n', 'utf8');
+    await mkdir(path.join(repo, 'ops', 'ci', 'more'), { recursive: true });
+    await writeFile(path.join(repo, 'ops', 'ci', 'more', 'tool.mjs'), 'export const tool = 1;\n', 'utf8');
+
+    const { dir } = await createWorktree({ repo, idea });
+    await seedOps({ repo, dir });
+    const edited = 'node --test "ops/**/test/*.test.mjs"\npnpm --filter @mergecrew/domain test\n';
+    await writeFile(path.join(dir, 'ops', 'ci', 'checks.conf'), edited, 'utf8');
+
+    const again = await seedOps({ repo, dir });
+    assert.equal(again.status, 'present');
+    assert.equal(again.files, 0);
+    assert.ok(again.kept >= 2);
+    assert.equal(await readFile(path.join(dir, 'ops', 'ci', 'checks.conf'), 'utf8'), edited);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A dev agent runs inside a file sandbox that cannot write the per-worktree
+ * index (`<repo>/.git/worktrees/<id>/index.lock: Permission denied`), so "commit
+ * your work" is an instruction it cannot follow. The pipeline commits instead —
+ * and the review gate needs that commit to have something to review.
+ */
+test('commitWorktree commits the agent\'s work on its branch, with its own identity', async () => {
+  const repo = await tempRepo();
+  try {
+    const { dir } = await createWorktree({ repo, idea });
+    await mkdir(path.join(dir, 'ops', 'ci'), { recursive: true });
+    await writeFile(path.join(dir, 'ops', 'ci', 'checks.conf'), 'node --test "ops/**/test/*.test.mjs"\n', 'utf8');
+    await writeFile(path.join(dir, 'AGENT_REPORT.md'), 'did the thing\n', 'utf8');
+
+    const committed = await commitWorktree({ dir, idea: { id: 'idea-abc123', title: 'Enable the parked check' } });
+    assert.equal(committed.status, 'committed');
+    assert.ok(committed.files >= 2);
+    assert.match(committed.sha, /^[0-9a-f]{40}$/);
+    // The work is on the idea branch, and the main checkout is untouched.
+    assert.equal(await git(dir, 'log', '-1', '--format=%s'), 'idea-abc123: Enable the parked check');
+    assert.equal(await git(dir, 'show', '--name-only', '--format=', 'HEAD').then((s) => s.includes('ops/ci/checks.conf')), true);
+
+    // Idempotent: a second sweep that finds the report again does not re-commit.
+    const again = await commitWorktree({ dir, idea: { id: 'idea-abc123', title: 'Enable the parked check' } });
+    assert.equal(again.status, 'clean');
+    assert.equal(again.files, 0);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }

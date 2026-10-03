@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import {
   buildCommand,
+  childEnv,
   classifyAgentFailure,
   readAgentLog,
   resolveAgent,
@@ -193,4 +194,34 @@ test('classifyAgentFailure treats an agent that ran and stopped as a task failur
 
   const nothing = classifyAgentFailure(null);
   assert.equal(nothing.kind, 'no-output');
+});
+
+/**
+ * The agent we spawn inherits our environment, including the knobs that decide
+ * how the pipeline behaves. A dev agent that sees `PIPELINE_DEV_AGENT=on` runs
+ * `ops/pipeline/test/run.test.mjs` under a different contract than the test
+ * documents, so the suite fails for a reason unrelated to the agent's change —
+ * exactly what a dev agent reported on 2026-10-03.
+ */
+test('childEnv strips the pipeline control knobs and keeps everything else', () => {
+  const env = childEnv(
+    {
+      PATH: '/usr/bin',
+      HOME: '/home/agent',
+      PIPELINE_DEV_AGENT: 'on',
+      PIPELINE_UAT_URL: 'http://127.0.0.1:3100/orgs/demo/ideas',
+      IDEATION_PORT: '7788',
+      DEV_AGENT: 'dsh',
+    },
+    { id: 'idea-abc123' },
+  );
+
+  assert.equal(env.PIPELINE_DEV_AGENT, undefined);
+  assert.equal(env.PIPELINE_UAT_URL, undefined);
+  // Not ours to strip: the agent needs its own provider settings and PATH.
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal(env.HOME, '/home/agent');
+  assert.equal(env.DEV_AGENT, 'dsh');
+  assert.equal(env.IDEATION_PORT, '7788');
+  assert.equal(env.MERGECREW_IDEA_ID, 'idea-abc123');
 });

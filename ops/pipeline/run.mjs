@@ -26,7 +26,7 @@
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
-import { agentReport, createWorktree, seedWorktree, worktreePath } from './lib/worktree.mjs';
+import { agentReport, commitWorktree, createWorktree, seedWorktree, worktreePath } from './lib/worktree.mjs';
 import { classifyAgentFailure, readAgentLog, spawnDevAgent } from './lib/agent.mjs';
 import { beat, clearStage, logLine, readHeartbeat, readIdeaPipeline, recordStage, writeIdeaPipeline } from './lib/state.mjs';
 import { IdeaStore } from '../ideation/lib/store.mjs';
@@ -209,7 +209,24 @@ export async function advanceIdea(
   if (stages.dev?.status === 'running') {
     const report = await agentReport({ dir: worktreeAbs });
     if (report) {
-      const dev = { status: 'done', report: path.relative(repo, report.file), endedAt: new Date().toISOString() };
+      // The agent cannot commit (see commitWorktree): the pipeline does it, so
+      // the review gate reads a diff and the branch holds the actual change.
+      const committed = await commitWorktree({ dir: worktreeAbs, idea, log: emit });
+      if (committed.status === 'failed') emit(`could not commit ${idea.id}: ${committed.reason}`);
+      const endedAt = new Date().toISOString();
+      // Keep what the run record already knows — provider, command, pid, log —
+      // so the deck can say *which* agent did the work, not just "agent".
+      const dev = {
+        ...stages.dev,
+        status: 'done',
+        report: path.relative(repo, report.file),
+        endedAt,
+        durationMs: stages.dev.startedAt ? Date.parse(endedAt) - Date.parse(stages.dev.startedAt) : null,
+        commit: committed.sha ?? null,
+        commitStatus: committed.status,
+        commitFiles: committed.files ?? 0,
+        reason: null,
+      };
       await recordStage(repo, idea.id, 'dev', dev);
       const merged = (await readIdeaPipeline(repo, idea.id)).stages;
       await writeIdeaPipeline(repo, idea.id, { stages: merged });
@@ -338,6 +355,8 @@ export async function advanceIdea(
       issue: stages.issue?.url ?? stages.issue?.file ?? null,
       worktree: stages.worktree?.dir ?? null,
       dev: stages.dev?.status ?? null,
+      provider: stages.dev?.provider ?? null,
+      commit: stages.dev?.commit ?? null,
       qa: stages.qa?.verdict ?? null,
       demo: stages.qa?.demo ?? null,
     };
