@@ -1,4 +1,7 @@
 import {
+  READ_ONLY_AGENT_KINDS,
+  projectToolSurface,
+  sanitizeToolName,
   type AgentDefinition,
   type ModelCapability,
   type ProviderRef,
@@ -7,6 +10,12 @@ import {
 } from '@mergecrew/domain';
 import { CapabilityRouter, type LlmProfile, type Usage, capabilitiesFor } from '@mergecrew/llm';
 import { SkillExecutor, type SkillExecutionContext } from '@mergecrew/skills';
+
+// The tool-surface rules (read-only kind filtering, wire-name sanitization) live
+// in `@mergecrew/domain` so the product's tools view reports exactly what this
+// loop binds. Re-exported here because callers have imported them from the
+// runtime since before the move.
+export { READ_ONLY_AGENT_KINDS, sanitizeToolName };
 import { Eventlog } from '@mergecrew/eventlog';
 import {
   AIMessage,
@@ -110,51 +119,40 @@ export async function runAgentStep(ctx: RunCtx): Promise<StepOutcome> {
   }
 
   const { agent, abortSignal } = ctx;
-  const tools: ToolSpec[] = [];
-  for (const sb of agent.skills) {
-    const name = typeof sb === 'string' ? sb : sb.name;
-    const skill = ctx.skills.get(name);
-    if (!skill) continue;
-    // Read-only kinds (Planner / Reviewer / Discovery / PM / QA /
-    // DesignReviewer / Observation / BugTriage) get their tool surface
-    // filtered to `sideEffectClass === 'read'` defensively at runtime.
-    // Even if a misconfigured lifecycle YAML binds a write skill to one
-    // of them, the model never sees the tool — it's filtered before
-    // `bindTools`. The single source of truth is `READ_ONLY_AGENT_KINDS`
-    // below.
-    if (READ_ONLY_AGENT_KINDS.has(agent.kind) && skill.sideEffectClass !== 'read') {
-      continue;
-    }
-    tools.push({ name: skill.name, description: skill.description, inputSchema: skill.inputSchema });
-  }
+  // One projection for both the wire and the product's tools view: read-only
+  // kinds lose every write skill, unresolved bindings are skipped, and dotted
+  // skill names are sanitized for providers that reject them. The rules and the
+  // implementation live in `@mergecrew/domain` so the two can never drift.
+  const surface = projectToolSurface({
+    kind: agent.kind,
+    bindings: agent.skills,
+    lookup: (name) => ctx.skills.get(name),
+  });
+  const tools: ToolSpec[] = surface.tools.map((t) => ({
+    name: t.skillName,
+    description: t.description,
+    inputSchema: t.skill.inputSchema,
+  }));
 
   // OpenAI requires `tools[].function.name` to match `^[a-zA-Z0-9_-]+$`,
   // which rejects our dotted skill namespace (`repo.read_file`,
   // `slack.post`, …). Anthropic, Bedrock, and Ollama accept dots, so the
   // bug only surfaces the first time an org adds an OpenAI provider.
   //
-  // We sanitize names on the wire (dots → underscores) and keep a
-  // `wire → original` map so policy checks, skill lookup, ToolCall rows
-  // and eventlog payloads still see the canonical dotted names. The
-  // sanitized form is also valid for the other providers, so the LLM
-  // sees a uniform name space regardless of which one routes the call.
+  // The projection already sanitizes names and rejects collisions, so the
+  // map here only keeps the `wire → original` lookup that policy checks,
+  // skill resolution, ToolCall rows and eventlog payloads need: those must
+  // keep seeing the canonical dotted names.
   const wireToOriginal = new Map<string, string>();
-  for (const t of tools) {
-    const wire = sanitizeToolName(t.name);
-    const prior = wireToOriginal.get(wire);
-    if (prior && prior !== t.name) {
-      throw new Error(
-        `tool name collision after sanitization: '${prior}' and '${t.name}' both map to '${wire}'`,
-      );
-    }
-    wireToOriginal.set(wire, t.name);
+  for (const t of surface.tools) {
+    wireToOriginal.set(t.wireName, t.skillName);
   }
-  const boundTools = tools.map((t) => ({
+  const boundTools = surface.tools.map((t) => ({
     type: 'function' as const,
     function: {
-      name: sanitizeToolName(t.name),
+      name: t.wireName,
       description: t.description,
-      parameters: t.inputSchema as Record<string, unknown>,
+      parameters: t.skill.inputSchema as Record<string, unknown>,
     },
   }));
 
@@ -561,14 +559,6 @@ function aiMessageText(msg: AIMessage | undefined): string {
   return '';
 }
 
-// OpenAI's tool-call API enforces `^[a-zA-Z0-9_-]+$` on `function.name`.
-// Anthropic, Bedrock, and Ollama accept a broader set, but the
-// sanitized form is valid for all of them, so we use it on every wire
-// rather than branch per-provider.
-export function sanitizeToolName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_-]/g, '_');
-}
-
 function defaultSystemPrompt(kind: string): string {
   if (kind === PLANNER_AGENT_KIND) return PLANNER_SYSTEM_PROMPT;
   if (kind === CODER_AGENT_KIND) return CODER_SYSTEM_PROMPT;
@@ -634,23 +624,11 @@ export const DOC_WRITER_AGENT_KIND = 'DocWriter';
  * a write skill to one of these still won't expose it — the runtime
  * drops it before `bindTools`.
  *
- * Includes Planner + Reviewer (legacy) plus the read-only kinds in the
- * roster: Discovery scans, PM drafts specs (no repo writes), QA runs
- * test commands (build skills, not file edits), DesignReviewer reads
- * the deployed UI, Observation hits the smoke endpoint, BugTriage
- * files tracker issues. Engineers / SRE / DocWriter are NOT here —
- * they write to the workspace.
+ * The set itself lives in `@mergecrew/skills` (re-exported above) so the
+ * runtime and the product's tools view cannot drift; the kind constants
+ * below hold the same names, and `test/roster-kinds.test.ts` asserts the
+ * membership stays in sync.
  */
-export const READ_ONLY_AGENT_KINDS = new Set<string>([
-  PLANNER_AGENT_KIND,
-  REVIEWER_AGENT_KIND,
-  DISCOVERY_AGENT_KIND,
-  PM_AGENT_KIND,
-  QA_AGENT_KIND,
-  DESIGN_REVIEWER_AGENT_KIND,
-  OBSERVATION_AGENT_KIND,
-  BUG_TRIAGE_AGENT_KIND,
-]);
 
 /**
  * The coder's job is to take the planner's markdown plan (#332) and

@@ -8,6 +8,7 @@ export * from './run.js';
 export * from './events.js';
 export * from './messages.js';
 export * from './tools.js';
+export * from './tool-surface.js';
 export * from './errors.js';
 export * from './auto-promote.js';
 export * from './parse-package-diff.js';

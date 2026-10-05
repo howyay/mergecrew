@@ -1039,6 +1039,20 @@
         ]
       }
     },
+    "/v1/tools": {
+      "get": {
+        "operationId": "ToolsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Tools"
+        ]
+      }
+    },
     "/v1/orgs/{slug}/lifecycle-templates": {
       "get": {
         "operationId": "OrgTemplateController_list",
