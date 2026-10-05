@@ -30,6 +30,38 @@ export function rigNameForOrg(slug: string, referenceRig = REFERENCE_ORG_SLUG): 
   return clean === REFERENCE_ORG_SLUG ? referenceRig : `mc-${clean}`;
 }
 
+export interface Tenant {
+  organization: string;
+  city: string;
+  rig: string;
+  known: boolean;
+}
+
+/**
+ * The rigs the city holds. `CITY_RIGS` wins when it is set, because a rig with no
+ * agent cannot be derived from the agent list. Otherwise the rig is the part of an
+ * agent's qualified name before the slash.
+ */
+export function rigsFromAgents(items: unknown[], configured?: string): string[] {
+  const fromEnv = String(configured ?? '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (fromEnv.length) return [...new Set(fromEnv)];
+  const names = new Set<string>();
+  for (const item of items ?? []) {
+    const record = item as { rig?: unknown; qualified_name?: unknown; name?: unknown };
+    if (typeof record?.rig === 'string' && record.rig) {
+      names.add(record.rig);
+      continue;
+    }
+    const qualified = typeof record?.qualified_name === 'string' ? record.qualified_name : '';
+    const prefix = qualified.includes('/') ? qualified.split('/')[0] : '';
+    if (prefix) names.add(prefix);
+  }
+  return [...names];
+}
+
 const DEFAULT_TIMEOUT_MS = 1_500;
 
 @Injectable()
@@ -51,9 +83,16 @@ export class CityService {
     return this.read<CityList>('sessions');
   }
 
-  /** The tenant rule of ADR-0016 step 6, exposed for the project and org views. */
-  tenant(orgSlug: string): { organization: string; city: string; rig: string } {
-    return { organization: orgSlug, city: this.city, rig: rigNameForOrg(orgSlug) };
+  /**
+   * The tenant rule of ADR-0016 step 6, exposed for the project and org views.
+   * `known` says whether the city holds that rig. A mapping to a rig that does not
+   * exist is a configuration error, and the caller must see it.
+   */
+  async tenant(orgSlug: string): Promise<Tenant> {
+    const rig = rigNameForOrg(orgSlug);
+    const response = await this.agents();
+    const rigs = rigsFromAgents((response.items ?? []) as unknown[], process.env.CITY_RIGS);
+    return { organization: orgSlug, city: this.city, rig, known: rigs.includes(rig) };
   }
 
   private async read<T>(resource: string): Promise<T> {

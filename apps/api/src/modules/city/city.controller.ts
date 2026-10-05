@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
 import { CityService } from './city.service.js';
 import { RequireRole, RoleGuard } from '../../common/role.guard.js';
 
@@ -32,7 +32,14 @@ export class CityController {
 
   @Get('tenant/:orgSlug')
   @RequireRole('admin')
-  tenant(@Param('orgSlug') orgSlug: string) {
-    return this.city.tenant(orgSlug);
+  async tenant(@Param('orgSlug') orgSlug: string) {
+    const tenant = await this.city.tenant(orgSlug);
+    if (!tenant.known) {
+      throw new NotFoundException(
+        `The city "${tenant.city}" has no rig "${tenant.rig}" for organization "${tenant.organization}". ` +
+          'Add the rig to the city, or set CITY_RIGS to the rig list the product should accept.',
+      );
+    }
+    return tenant;
   }
 }
