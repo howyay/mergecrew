@@ -21,6 +21,41 @@ export interface CityList {
   [key: string]: unknown;
 }
 
+export type StatusView = 'full' | 'summary';
+
+/**
+ * The status fields the product reads: `?view=summary` keeps these nine, and the
+ * rest of the payload is for a human with a terminal.
+ *
+ * The supervisor always answers with the full payload, `agent_details` included —
+ * 4,337 of 5,235 bytes on a twenty-agent city, and it grows with the agent count.
+ * It ignores query parameters, so the projection has to happen here. This is a
+ * keep-list rather than a drop-list on purpose: a new supervisor field cannot
+ * silently re-inflate the summary.
+ */
+export const CITY_STATUS_SUMMARY_FIELDS = [
+  'name',
+  'version',
+  'path',
+  'uptime_sec',
+  'suspended',
+  'agent_count',
+  'rig_count',
+  'beads_version',
+  'agents',
+] as const;
+
+export function projectStatus(payload: CityStatus, view: StatusView = 'full'): CityStatus {
+  if (view !== 'summary') return payload;
+  // A record rather than `CityStatus`: writing through a union of literal keys resolves to
+  // the intersection of those properties, which for a payload of mixed types is `undefined`.
+  const summary: Record<string, unknown> = {};
+  for (const field of CITY_STATUS_SUMMARY_FIELDS) {
+    if (field in payload) summary[field] = payload[field];
+  }
+  return summary;
+}
+
 /** The reference organization keeps the existing rig. Every other org is prefixed. */
 export const REFERENCE_ORG_SLUG = 'mergecrew';
 
@@ -75,8 +110,8 @@ export class CityService {
   private rigCache: { at: number; rigs: string[] } | null = null;
   private readonly rigCacheMs = Number(process.env.CITY_RIGS_CACHE_MS ?? DEFAULT_RIG_CACHE_MS);
 
-  async status(): Promise<CityStatus> {
-    return this.read<CityStatus>('status');
+  async status(view: StatusView = 'full'): Promise<CityStatus> {
+    return projectStatus(await this.read<CityStatus>('status'), view);
   }
 
   async agents(): Promise<CityList> {

@@ -1,4 +1,11 @@
-import { CityService, rigNameForOrg, rigsFromAgents } from './city.service.js';
+import {
+  CITY_STATUS_SUMMARY_FIELDS,
+  CityService,
+  projectStatus,
+  rigNameForOrg,
+  rigsFromAgents,
+  type CityStatus,
+} from './city.service.js';
 
 /**
  * The city module is the product's door to Gas City. These tests cover the tenant
@@ -125,5 +132,74 @@ describe('CityService', () => {
     });
     await expect(service.knownRigs()).resolves.toEqual(['mergecrew', 'mc-acme']);
     expect(agents).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The supervisor answers with the full status every time — `agent_details` alone was
+ * 4,337 of 5,235 bytes on a twenty-agent city — so the product pages ask for the
+ * summary view and this projection is what makes that cheap.
+ */
+describe('projectStatus', () => {
+  const full: CityStatus = {
+    name: 'gascity',
+    version: '1.4.2',
+    path: '/home/haoye/gascity',
+    uptime_sec: 41_000,
+    suspended: false,
+    agent_count: 20,
+    rig_count: 1,
+    beads_version: 'v66',
+    running: 4,
+    agents: { total: 20, running: 4 },
+    agent_details: Array.from({ length: 20 }, (_, index) => ({
+      name: `agent-${index}`,
+      state: 'stopped',
+      provider: 'claude',
+      pool: 'default',
+      last_active: '2026-10-05T21:00:00Z',
+    })),
+  };
+
+  it('keeps every field the product pages read', () => {
+    const summary = projectStatus(full, 'summary');
+    for (const field of CITY_STATUS_SUMMARY_FIELDS) {
+      expect(summary[field]).toEqual(full[field]);
+    }
+  });
+
+  it('drops the detail blocks that dominate the payload', () => {
+    const summary = projectStatus(full, 'summary');
+    expect(summary).not.toHaveProperty('agent_details');
+    expect(summary).not.toHaveProperty('running');
+  });
+
+  it('shrinks the payload by more than an order of magnitude', () => {
+    const ratio = JSON.stringify(projectStatus(full, 'summary')).length / JSON.stringify(full).length;
+    expect(ratio).toBeLessThan(0.1);
+  });
+
+  it('returns the payload untouched by default, so existing callers are unaffected', () => {
+    expect(projectStatus(full)).toBe(full);
+  });
+});
+
+describe('CityService status views', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('projects on the summary view and passes the full payload through otherwise', async () => {
+    const payload = { name: 'gascity', agent_count: 2, agent_details: [{ name: 'a' }] };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => payload }) as unknown as typeof fetch;
+
+    const service = new CityService();
+
+    await expect(service.status('summary')).resolves.toEqual({ name: 'gascity', agent_count: 2 });
+    await expect(service.status()).resolves.toEqual(payload);
   });
 });

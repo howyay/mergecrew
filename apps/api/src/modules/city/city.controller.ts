@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query, UseGuards } from '@nestjs/common';
 import { CityService } from './city.service.js';
 import { RequireRole, RoleGuard } from '../../common/role.guard.js';
 
@@ -12,10 +12,15 @@ import { RequireRole, RoleGuard } from '../../common/role.guard.js';
 export class CityController {
   constructor(private city: CityService) {}
 
+  /**
+   * `?view=summary` keeps the nine fields the product pages read and drops
+   * `agent_details` and friends — 83% of the payload on a twenty-agent city.
+   * Anything else answers with the full status, so existing callers are unaffected.
+   */
   @Get('status')
   @RequireRole('admin')
-  async status() {
-    return this.city.status();
+  async status(@Query('view') view?: string) {
+    return this.city.status(view === 'summary' ? 'summary' : 'full');
   }
 
   @Get('agents')
