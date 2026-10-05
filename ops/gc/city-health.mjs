@@ -143,20 +143,27 @@ export function errorWindow(lines) {
  * Check that every rig mirror points at the city endpoint.
  *
  * A rig holds a `.beads/dolt-server.port` file. On 2026-10-05 the file went missing on the mergecrew
- * rig: reads still worked, and every write failed with an invalid connection.
+ * rig: reads still worked, and every write failed with an invalid connection. It went missing again
+ * the same day, so a missing file now names the file and the value that re-points it. The symptom on
+ * the rig side is `Dolt server unreachable at 127.0.0.1:0` — port zero is the whole clue.
  */
 export function checkEndpointMirror({ cityPort, rigs } = {}) {
   const problems = [];
   const city = String(cityPort ?? '').trim();
   if (!city) problems.push('the city has no endpoint port file');
   for (const rig of rigs ?? []) {
+    const name = rig?.name ?? '(unnamed)';
     const port = String(rig?.port ?? '').trim();
+    const file = rig?.path
+      ? join(rig.path, '.beads', 'dolt-server.port')
+      : `<${name}>/.beads/dolt-server.port`;
+    const fix = city ? `write ${city} into ${file} to re-point it` : `write the city port into ${file}`;
     if (!port) {
-      problems.push(`rig "${rig?.name ?? '(unnamed)'}" has no endpoint port file, so its mirror does not point at the city`);
+      problems.push(`rig "${name}" has no endpoint port file, so its mirror does not point at the city; ${fix}`);
       continue;
     }
     if (city && port !== city) {
-      problems.push(`rig "${rig?.name ?? '(unnamed)'}" points at port ${port}, and the city serves ${city}`);
+      problems.push(`rig "${name}" points at port ${port}, and the city serves ${city}; ${fix}`);
     }
   }
   return problems;
@@ -239,7 +246,7 @@ async function main(argv) {
   };
   const mirror = {
     cityPort: portOf(cityDir),
-    rigs: readRigs().map((rig) => ({ name: rig.name, port: rig.path ? portOf(rig.path) : '' })),
+    rigs: readRigs().map((rig) => ({ name: rig.name, port: rig.path ? portOf(rig.path) : '', path: rig.path })),
   };
 
   let logText = '';
