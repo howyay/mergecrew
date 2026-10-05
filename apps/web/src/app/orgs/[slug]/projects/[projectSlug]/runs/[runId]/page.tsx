@@ -156,9 +156,13 @@ export default async function RunPage({
     if (!title) return;
     const body = rationale ? `${title}\n\n${rationale}` : title;
     const s = await requireSession();
+    // Choosing a direction IS the human decision, so the idea is written
+    // approved and the run started below can pick it up. Ideas that arrive
+    // from a machine (Sentry, bug triage) are written queued instead and wait
+    // in the organization inbox.
     await api(`/v1/orgs/${slug}/projects/${projectSlug}/intent-inbox`, {
       method: 'POST',
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, decision: 'approve' }),
       session: s,
     }).catch(() => undefined);
     const r = await api<{ runId: string }>(`/v1/orgs/${slug}/projects/${projectSlug}/runs`, {
