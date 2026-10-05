@@ -7,8 +7,8 @@ of truth: every number below was read from the repository, not from memory.
 
 | Criterion | State | Evidence |
 | - | - | - |
-| 1. Every work item lands as a pull request with visible checks and a review conclusion | Met | 21 pull requests. `#2` to `#21` each carry a passing `build` check. Each body is a packet with the scope, the check evidence, and a review conclusion. |
-| 2. DEDUP-1 to DEDUP-6 each land as a reviewed pull request | Open | All six have open pull requests with green checks. The merge is the reviewer's decision. |
+| 1. Every work item lands as a pull request with visible checks and a review conclusion | Met | 24 pull requests. `#2` to `#24` each carry a passing `build` check, and the build job now runs the tool suite. Each body is a packet with the scope, the check evidence, and a review conclusion. |
+| 2. DEDUP-1 to DEDUP-6 each land as a reviewed pull request | Open | All six have open pull requests with green checks, and `#23` merges the series for a one-action landing. The merge is the reviewer's decision. |
 | 3. The frontend drives Gas City with an organization to rig map | Met | `#6` (client), `#8` (contract), `#13` (tenant map), `#14` (web page), `#20` (boundary enforcement). |
 | 4. The Dolt error rate stays zero | Met | The health gate (`#16`) reports the error window and the count. Since the fix: 0. |
 
@@ -34,13 +34,31 @@ of truth: every number below was read from the repository, not from memory.
 
 Each gate catches a failure that looks like success.
 
-| Gate | Pull request | What it proves | Live result |
+| Gate | Pull request | What it proves | Live result (2026-10-05) |
 | - | - | - | - |
-| Health | #16 | No store-write error, no too-fast order, no stuck session start | 0 errors in the window, 0 order problems |
+| Health | #16 | No store-write error, no too-fast order, no stuck session start | 0 errors, 0 order problems, 0 session problems |
 | Formula | #17 | Every exported formula compiles into a sound graph | 5 of 5, 0 problems |
 | Session contract | #19 | Every routed work item has a live session that can claim it | 0 routed, 0 stuck |
-| Order | #21 | Every declared order reached the city and can fire | 10 orders, 0 problems |
+| Order | #21 | Every declared order reached the city and can fire | 10 orders in the city, 0 problems |
 | Live contract | #9 | The supervisor payload shapes match the contract page | 4 of 4 resources, "contract holds" |
+
+## The check that runs the checks
+
+The tool suite has 147 tests and no install step, and no job ran it. `#24` adds one guarded step to
+the build job, right after the install. The step was verified in a real run:
+
+```text
+# tests 147
+# pass 146
+# fail 0
+# skipped 1
+# duration_ms 381.999194
+```
+
+The one skip is the live supervisor check, which skips when no supervisor is reachable. The run:
+<https://github.com/howyay/mergecrew/actions/runs/37328893119>.
+
+The step is also in `#23`, so landing the series brings both the tools and the check that runs them.
 
 ## Supporting work
 
@@ -51,6 +69,9 @@ Each gate catches a failure that looks like success.
 | #9 | The live check that makes the contract executable |
 | #11 | The packet generator, and a packet per branch |
 | #14 | The organization page that reads the city |
+| #22 | This status page |
+| #23 | The series integration: 21 branches, 0 conflicts, 147 tests |
+| #24 | The CI step that runs the tool suite |
 | #1 | The first end-to-end run (the polecat branch) |
 
 ## Findings
