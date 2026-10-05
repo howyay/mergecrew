@@ -95,6 +95,24 @@ A read fails with one message that names the address and the fix: "Gas City is n
 `<url>`. Start the supervisor, or set CITY_API_URL." The failure is logged at warn level. A read
 never blocks the product request path for more than `CITY_API_TIMEOUT_MS`.
 
+## 7a. How the contract is enforced
+
+`ops/gc/live-city-check.mjs` reads `status`, `agents`, `sessions`, and `usage`, then reports a
+missing key, a bad list envelope, or an unreachable supervisor. `ops/gc/test/live-city.test.mjs`
+runs it. The live test skips when the supervisor is down, so the suite still runs on a machine
+without Gas City.
+
+Run it before a release, and after a Gas City upgrade:
+
+```bash
+node ops/gc/live-city-check.mjs
+# status: HTTP 200 · ok
+# agents: HTTP 200 · ok
+# sessions: HTTP 200 · ok
+# usage: HTTP 200 · ok
+# contract holds
+```
+
 ## 8. Operating rules (learned on 2026-10-05)
 
 1. An order that writes once per minute destroys the store. Fourteen such orders dropped the Dolt
