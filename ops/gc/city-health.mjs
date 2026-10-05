@@ -164,10 +164,16 @@ async function main(argv) {
   const arg = (flag) => args.find((a) => a.startsWith(`${flag}=`))?.split('=').slice(1).join('=');
   const sinceMinutes = Number(arg('--since-minutes') ?? 60);
   const since = logStamp(new Date(Date.now() - sinceMinutes * 60_000));
+  // `gc` answers only inside a city. The tool may run from anywhere, so name the city directory.
+  const cityDir = arg('--city-dir') ?? process.env.GC_CITY_PATH ?? process.cwd();
 
   const { execFileSync } = await import('node:child_process');
   const read = (resource) => {
-    const out = execFileSync('gc', [resource, 'list', '--json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    const out = execFileSync('gc', [resource, 'list', '--json'], {
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      cwd: cityDir,
+    });
     const data = JSON.parse(out);
     return Array.isArray(data) ? data : (data.items ?? data.orders ?? data.sessions ?? []);
   };
