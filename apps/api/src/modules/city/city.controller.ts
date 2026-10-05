@@ -1,6 +1,7 @@
 import { Controller, Get, NotFoundException, Param, Query, UseGuards } from '@nestjs/common';
 import { CityService } from './city.service.js';
 import { RequireRole, RoleGuard } from '../../common/role.guard.js';
+import { TenantContextService } from '../../common/tenant-context.service.js';
 
 /**
  * Gas City read endpoints. Mounted under the admin tree so the existing
@@ -10,7 +11,10 @@ import { RequireRole, RoleGuard } from '../../common/role.guard.js';
 @Controller('v1/orgs/:slug/admin/city')
 @UseGuards(RoleGuard)
 export class CityController {
-  constructor(private city: CityService) {}
+  constructor(
+    private city: CityService,
+    private tenantContext: TenantContextService,
+  ) {}
 
   /**
    * `?view=summary` keeps the nine fields the product pages read and drops
@@ -33,6 +37,18 @@ export class CityController {
   @RequireRole('admin')
   async sessions() {
     return this.city.sessions();
+  }
+
+  /**
+   * Every project of this organization, bound to the rig that carries it. An
+   * unmapped project answers with the reason and the fix instead of being
+   * dropped, because the city cannot run a project it has no rig for.
+   */
+  @Get('projects')
+  @RequireRole('admin')
+  async projects() {
+    const tenant = this.tenantContext.require();
+    return this.city.projectRigs(tenant.organizationId);
   }
 
   @Get('tenant/:orgSlug')

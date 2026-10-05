@@ -85,6 +85,16 @@ GitHub *App* installation:
 | `/v1/skills` | GET | Global stock-skill catalog (read-only). |
 | `/v1/tools` | GET | Per-agent-kind tool surface: the skills an agent kind actually sees after read-only filtering and wire-name sanitization. |
 
+## Gas City (admin reads)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/orgs/:slug/admin/city/status` | GET | City state; `?view=summary` keeps the fields the pages read. |
+| `/v1/orgs/:slug/admin/city/agents` | GET | Agent list. |
+| `/v1/orgs/:slug/admin/city/sessions` | GET | Session list. |
+| `/v1/orgs/:slug/admin/city/tenant/:orgSlug` | GET | The rig an organization maps to. |
+| `/v1/orgs/:slug/admin/city/projects` | GET | Every project bound to its rig, with a reason and a fix for the unmapped ones. |
+
 ## Runs
 
 | Endpoint | Method | Purpose |

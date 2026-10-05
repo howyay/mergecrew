@@ -82,6 +82,34 @@ The API module `apps/api/src/modules/city` exposes the reads. It reuses `RoleGua
 | `GET /v1/orgs/:slug/admin/city/agents` | agent list |
 | `GET /v1/orgs/:slug/admin/city/sessions` | session list |
 | `GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` | the rig for an organization |
+| `GET /v1/orgs/:slug/admin/city/projects` | every project of the organization bound to a rig, with a reason and a fix for the unmapped ones |
+
+### Project to rig binding
+
+A project reaches the city through a rig, so the product has to answer which rig carries which
+project. The rule lives in one place — `packages/domain/src/rigs.ts` — so the API, the pages, and the
+`ops/gc` tools cannot drift apart. `CityService.projectRigs()` reads `GET /v0/city/<city>/rigs` once
+and binds each project (organization-scoped, `deletedAt: null`, ordered by slug) in this order:
+
+1. `CITY_PROJECT_RIGS`, an explicit override. JSON (`{"mergecrew":"mc-mergecrew"}`) or a
+   `slug=rig,slug2=rig2` list. A key may be the project slug, the full repository name, or the bare
+   repository name, all lowercased.
+2. The rig `name` equal to the repository name (`howyay/mergecrew` → `mergecrew`).
+3. The rig directory basename equal to the repository name.
+
+A project with no match is reported, never dropped: `reason` says what was tried, and `fix` names the
+action (`gc rig add <path>`) so the page can show it. An override that names a rig the city does not
+hold is reported the same way instead of silently falling back to a weaker match.
+
+The override is read from the environment, so it needs no migration. Persisting it per project is the
+next cut, and it is recorded as a finding before this landed.
+
+| Environment variable | Default | Meaning |
+| - | - | - |
+| `CITY_API_URL` | `http://127.0.0.1:8372` | supervisor address |
+| `GC_CITY` | `gascity` | city name in the path |
+| `CITY_API_TIMEOUT_MS` | `1500` | read timeout |
+| `CITY_PROJECT_RIGS` | unset | explicit project → rig overrides, when the naming rule cannot find the rig |
 
 The supervisor always answers with the whole status, `agent_details` included, and ignores query
 parameters, so the `view=summary` projection happens in `CityService`: a keep-list of the nine fields
