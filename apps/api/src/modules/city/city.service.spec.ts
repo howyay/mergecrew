@@ -73,4 +73,57 @@ describe('CityService', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED')) as unknown as typeof fetch;
     await expect(service.status()).rejects.toThrow(/Gas City is not reachable at http:\/\/127\.0\.0\.1:9/);
   });
+
+  it('reads the agent list once for a burst of tenant reads', async () => {
+    const service = new CityService();
+    const agents = jest.spyOn(service, 'agents').mockResolvedValue({ items: [{ rig: 'mergecrew' }], total: 1 });
+
+    await service.tenant('mergecrew');
+    await service.tenant('acme');
+    await service.tenant('other');
+
+    expect(agents).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads the agent list once the cache window has passed', async () => {
+    jest.useFakeTimers();
+    try {
+      const service = new CityService();
+      const agents = jest.spyOn(service, 'agents').mockResolvedValue({ items: [{ rig: 'mergecrew' }], total: 1 });
+
+      await service.tenant('mergecrew');
+      jest.setSystemTime(Date.now() + 6_000);
+      await service.tenant('mergecrew');
+
+      expect(agents).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('honours an explicit cache window when the operator sets one', async () => {
+    process.env.CITY_RIGS_CACHE_MS = '0';
+    const service = new CityService();
+    const agents = jest.spyOn(service, 'agents').mockResolvedValue({ items: [{ rig: 'mergecrew' }], total: 1 });
+
+    await service.tenant('mergecrew');
+    await service.tenant('mergecrew');
+
+    expect(agents).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not read the city at all when CITY_RIGS names the rigs', async () => {
+    process.env.CITY_RIGS = 'mergecrew,mc-acme';
+    const service = new CityService();
+    const agents = jest.spyOn(service, 'agents');
+
+    await expect(service.tenant('acme')).resolves.toEqual({
+      organization: 'acme',
+      city: 'gascity',
+      rig: 'mc-acme',
+      known: true,
+    });
+    await expect(service.knownRigs()).resolves.toEqual(['mergecrew', 'mc-acme']);
+    expect(agents).not.toHaveBeenCalled();
+  });
 });

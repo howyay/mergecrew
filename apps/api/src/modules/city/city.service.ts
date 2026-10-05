@@ -63,6 +63,7 @@ export function rigsFromAgents(items: unknown[], configured?: string): string[] 
 }
 
 const DEFAULT_TIMEOUT_MS = 1_500;
+const DEFAULT_RIG_CACHE_MS = 5_000;
 
 @Injectable()
 export class CityService {
@@ -70,6 +71,9 @@ export class CityService {
   private readonly baseUrl = (process.env.CITY_API_URL ?? 'http://127.0.0.1:8372').replace(/\/$/, '');
   private readonly city = process.env.GC_CITY ?? 'gascity';
   private readonly timeoutMs = Number(process.env.CITY_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  /** See `knownRigs()`. `null` means nothing has been read yet. */
+  private rigCache: { at: number; rigs: string[] } | null = null;
+  private readonly rigCacheMs = Number(process.env.CITY_RIGS_CACHE_MS ?? DEFAULT_RIG_CACHE_MS);
 
   async status(): Promise<CityStatus> {
     return this.read<CityStatus>('status');
@@ -84,14 +88,35 @@ export class CityService {
   }
 
   /**
+   * The rig names the city holds.
+   *
+   * A tenant read used to fetch the agent list every time it ran, so a page that
+   * resolves several organizations paid one agent read per organization. Two rules
+   * remove that: with `CITY_RIGS` set the operator has already named the rigs, so no
+   * read happens at all; otherwise the read is cached for `CITY_RIGS_CACHE_MS` (five
+   * seconds by default), which collapses a burst of tenant reads into one.
+   */
+  async knownRigs(): Promise<string[]> {
+    const configured = String(process.env.CITY_RIGS ?? '').trim();
+    if (configured) return rigsFromAgents([], configured);
+
+    const now = Date.now();
+    if (this.rigCache && now - this.rigCache.at < this.rigCacheMs) return this.rigCache.rigs;
+
+    const response = await this.agents();
+    const rigs = rigsFromAgents((response.items ?? []) as unknown[], configured);
+    this.rigCache = { at: now, rigs };
+    return rigs;
+  }
+
+  /**
    * The tenant rule of ADR-0016 step 6, exposed for the project and org views.
    * `known` says whether the city holds that rig. A mapping to a rig that does not
    * exist is a configuration error, and the caller must see it.
    */
   async tenant(orgSlug: string): Promise<Tenant> {
     const rig = rigNameForOrg(orgSlug);
-    const response = await this.agents();
-    const rigs = rigsFromAgents((response.items ?? []) as unknown[], process.env.CITY_RIGS);
+    const rigs = await this.knownRigs();
     return { organization: orgSlug, city: this.city, rig, known: rigs.includes(rig) };
   }
 
