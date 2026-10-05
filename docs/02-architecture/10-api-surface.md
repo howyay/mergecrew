@@ -95,7 +95,6 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/projects/:projectSlug/runs/:runId/cancel` | POST | Cancel. |
 | `/v1/orgs/:slug/projects/:projectSlug/runs/:runId/timeline` | GET | Paged timeline (replay). |
 | `/v1/orgs/:slug/projects/:projectSlug/runs/:runId/timeline/stream` | GET (SSE) | Live timeline stream. |
-| `/v1/orgs/:slug/activity` | GET | Org-wide activity feed (cross-project). |
 
 ### SSE timeline stream
 

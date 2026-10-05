@@ -90,7 +90,7 @@ Concrete feature inventory grouped by surface. Each feature has a brief descript
 | Feature | Persona | Status |
 |---|---|---|
 | Live timeline view per project | All | Implemented |
-| Org-wide activity feed | Mira | Implemented |
+| Org-wide activity feed | Mira | Removed — per-run transcripts and the Gas City view carry the history |
 | Per-changeset details: diff, dev URL, screenshots, tests, cost | All | In progress |
 | Replayable transcript per agent | Mira | Implemented |
 | Mobile-first end-of-day digest | Theo | Planned |

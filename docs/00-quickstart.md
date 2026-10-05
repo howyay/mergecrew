@@ -8,7 +8,7 @@ If anything in here doesn't match what you see, jump to the [troubleshooting](#t
 
 mergecrew runs an **agentic development lifecycle** against your repo on a daily cadence. Each run dispatches a planner → coder → reviewer chain and proposes a changeset for human approval. Production promotion always requires a human decision — that's a product invariant, not a setting.
 
-The Today page surfaces five things: the day's run, pending approvals, open changesets, recent activity, and the per-org setup checklist while you're still onboarding.
+The Today page surfaces the day's run, pending approvals, open changesets, the Gas City summary, and the per-org setup checklist while you're still onboarding.
 
 ## Prereqs
 

@@ -10,7 +10,6 @@ import { LifecycleModule } from './modules/lifecycle/lifecycle.module.js';
 import { RunModule } from './modules/run/run.module.js';
 import { ChangesetModule } from './modules/changeset/changeset.module.js';
 import { ApprovalModule } from './modules/approval/approval.module.js';
-import { TimelineModule } from './modules/timeline/timeline.module.js';
 import { CostModule } from './modules/cost/cost.module.js';
 import { MetricsModule } from './modules/metrics/metrics.module.js';
 import { SloModule } from './modules/slo/slo.module.js';
@@ -40,7 +39,6 @@ import { CityModule } from './modules/city/city.module.js';
     RunModule,
     ChangesetModule,
     ApprovalModule,
-    TimelineModule,
     CostModule,
     MetricsModule,
     SloModule,
