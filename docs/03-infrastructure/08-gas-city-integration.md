@@ -101,7 +101,36 @@ A read fails with one message that names the address and the fix: "Gas City is n
 `<url>`. Start the supervisor, or set CITY_API_URL." The failure is logged at warn level. A read
 never blocks the product request path for more than `CITY_API_TIMEOUT_MS`.
 
-## 7a. How the contract is enforced
+## 7a. The rig endpoint mirror
+
+A rig reads and writes through the city's store, which it finds in `<rig>/.beads/dolt-server.port`.
+With `dolt.auto-start: false` that file is the only thing that names the endpoint, so when it goes
+missing the rig resolves port 0 and every command in the rig directory fails:
+
+```
+$ cd ~/projects/mergecrew && bd list
+Error: failed to open database: Dolt server unreachable at 127.0.0.1:0
+```
+
+The file went missing twice on 2026-10-05 (once before the write-failure incident, once after the
+file-backed migration). The fix is one line, and it is the same line both times:
+
+```bash
+printf '%s\n' "$(cat ~/gascity/.beads/dolt-server.port)" > ~/projects/mergecrew/.beads/dolt-server.port
+```
+
+`ops/gc/city-health.mjs` checks the mirror for every rig and prints that fix with the file path, so a
+missing or mismatched port file is caught by a gate instead of by a failed write:
+
+```bash
+node ops/gc/city-health.mjs --city-dir="$HOME/gascity"
+# Endpoint mirror problems: 0
+```
+
+Do not answer this with `bd dolt start`: it starts a second server and points the rig at it, which is
+the state the mirror rule exists to prevent.
+
+## 7b. How the contract is enforced
 
 `ops/gc/live-city-check.mjs` reads `status`, `agents`, `sessions`, and `usage`, then reports a
 missing key, a bad list envelope, or an unreachable supervisor. `ops/gc/test/live-city.test.mjs`

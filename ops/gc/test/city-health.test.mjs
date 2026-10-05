@@ -183,6 +183,24 @@ test('a mismatch between the rig and the city is a problem', () => {
   assert.match(problems.join(' '), /points at port 49944, and the city serves 49943/);
 });
 
+test('a missing port file names the file and the value that fixes it', () => {
+  const problems = checkEndpointMirror({
+    cityPort: '49943',
+    rigs: [{ name: 'mergecrew', port: '', path: '/home/haoye/projects/mergecrew' }],
+  });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /\/home\/haoye\/projects\/mergecrew\/\.beads\/dolt-server\.port/);
+  assert.match(problems[0], /write 49943 into .* to re-point it/);
+});
+
+test('a port mismatch carries the same fix', () => {
+  const problems = checkEndpointMirror({
+    cityPort: '49943',
+    rigs: [{ name: 'mergecrew', port: '49944', path: '/home/haoye/projects/mergecrew' }],
+  });
+  assert.match(problems[0], /write 49943 into .*dolt-server\.port to re-point it/);
+});
+
 test('a city without a port file is a problem', () => {
   assert.match(checkEndpointMirror({ cityPort: '', rigs: [] }).join(' '), /the city has no endpoint port file/);
 });
