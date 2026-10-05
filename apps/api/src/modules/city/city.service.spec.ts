@@ -3,9 +3,13 @@ import {
   CityService,
   projectStatus,
   rigNameForOrg,
+  rigRows,
   rigsFromAgents,
   type CityStatus,
 } from './city.service.js';
+import { CityController } from './city.controller.js';
+import type { OrgProjectSource } from './project-source.js';
+import type { TenantContextService } from '../../common/tenant-context.service.js';
 
 /**
  * The city module is the product's door to Gas City. These tests cover the tenant
@@ -201,5 +205,175 @@ describe('CityService status views', () => {
 
     await expect(service.status('summary')).resolves.toEqual({ name: 'gascity', agent_count: 2 });
     await expect(service.status()).resolves.toEqual(payload);
+  });
+});
+
+describe('rigRows', () => {
+  it('keeps the fields the binding and the page read', () => {
+    expect(
+      rigRows([
+        {
+          name: 'mergecrew',
+          path: '/home/me/projects/mergecrew',
+          suspended: false,
+          default_branch: 'main',
+          agent_count: 8,
+          running_count: 1,
+          last_activity: '2026-10-05T22:40:59Z',
+          unrecognized: 'dropped',
+        },
+      ]),
+    ).toEqual([
+      {
+        name: 'mergecrew',
+        path: '/home/me/projects/mergecrew',
+        suspended: false,
+        default_branch: 'main',
+        agent_count: 8,
+        running_count: 1,
+        last_activity: '2026-10-05T22:40:59Z',
+      },
+    ]);
+  });
+
+  it('fills missing fields with null rather than undefined', () => {
+    expect(rigRows([{ name: 'mergecrew' }])).toEqual([
+      {
+        name: 'mergecrew',
+        path: null,
+        suspended: null,
+        default_branch: null,
+        agent_count: null,
+        running_count: null,
+        last_activity: null,
+      },
+    ]);
+  });
+
+  it('drops a row with no usable name, because it cannot be matched', () => {
+    expect(rigRows([{ path: '/x' }, { name: '   ' }, { name: 'keep' }]).map((r) => r.name)).toEqual([
+      'keep',
+    ]);
+  });
+
+  it('tolerates an empty list', () => {
+    expect(rigRows([])).toEqual([]);
+  });
+});
+
+describe('CityService project rigs', () => {
+  const originalFetch = global.fetch;
+  const originalEnv = process.env;
+
+  const rigPayload = {
+    items: [{ name: 'mergecrew', path: '/home/me/projects/mergecrew', suspended: false }],
+    total: 1,
+  };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => rigPayload }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    process.env = originalEnv;
+    jest.restoreAllMocks();
+  });
+
+  it('binds each project and reports the ones the city does not carry', async () => {
+    const service = new CityService({
+      listByOrganizationId: async () => [
+        { slug: 'mergecrew', name: 'Mergecrew', repoFullName: 'howyay/mergecrew' },
+        { slug: 'blank', name: 'Blank' },
+      ],
+    } as OrgProjectSource);
+
+    const result = await service.projectRigs('org-1');
+
+    expect(result.city).toBe('gascity');
+    expect(result.rigs.map((rig) => rig.name)).toEqual(['mergecrew']);
+    expect(result.items).toEqual([
+      expect.objectContaining({ projectSlug: 'blank', matched: false, rig: null }),
+      expect.objectContaining({
+        projectSlug: 'mergecrew',
+        rig: 'mergecrew',
+        rigPath: '/home/me/projects/mergecrew',
+        matched: true,
+        fix: null,
+      }),
+    ]);
+    expect(result.items[0].fix).toContain('gc rig add');
+    expect(result).toMatchObject({ total: 2, unmatched: 1, complete: false });
+  });
+
+  it('reads the rig resource once and never the agent list', async () => {
+    const service = new CityService({ listByOrganizationId: async () => [] } as OrgProjectSource);
+    await service.projectRigs('org-1');
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toContain('/v0/city/gascity/rigs');
+  });
+
+  it('lets CITY_PROJECT_RIGS pick a rig the derivation cannot guess', async () => {
+    process.env.CITY_PROJECT_RIGS = '{"mergecrew":"mc-mergecrew"}';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          { name: 'mergecrew', path: '/home/me/projects/mergecrew' },
+          { name: 'mc-mergecrew', path: '/srv/mc-mergecrew' },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+    const service = new CityService({
+      listByOrganizationId: async () => [
+        { slug: 'mergecrew', repoFullName: 'howyay/mergecrew' },
+      ],
+    } as OrgProjectSource);
+
+    const result = await service.projectRigs('org-1');
+
+    expect(result.items[0]).toMatchObject({
+      rig: 'mc-mergecrew',
+      matched: true,
+      reason: 'mapped explicitly to rig "mc-mergecrew"',
+    });
+  });
+
+  it('still answers about the city when no project source is wired in', async () => {
+    const result = await new CityService().projectRigs('org-1');
+
+    expect(result.rigs.map((rig) => rig.name)).toEqual(['mergecrew']);
+    expect(result).toMatchObject({ items: [], total: 0, complete: false });
+  });
+
+  it('surfaces a city that cannot be read instead of pretending there are no rigs', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503 }) as unknown as typeof fetch;
+    const service = new CityService({ listByOrganizationId: async () => [] } as OrgProjectSource);
+
+    await expect(service.projectRigs('org-1')).rejects.toThrow(/not reachable/);
+  });
+});
+
+describe('CityController project rigs', () => {
+  it('passes the calling organization to the service', async () => {
+    const seen: string[] = [];
+    const city = {
+      projectRigs: async (organizationId: string) => {
+        seen.push(organizationId);
+        return { city: 'gascity', rigs: [], items: [], total: 0, unmatched: 0, complete: false };
+      },
+    } as unknown as CityService;
+    const tenant = {
+      require: () => ({ organizationId: 'org-1', organizationSlug: 'acme' }),
+    } as unknown as TenantContextService;
+
+    const controller = new CityController(city, tenant);
+
+    await expect(controller.projects()).resolves.toMatchObject({ city: 'gascity' });
+    expect(seen).toEqual(['org-1']);
   });
 });

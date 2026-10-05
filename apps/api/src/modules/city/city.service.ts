@@ -1,4 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  bindProjects,
+  parseRigOverrides,
+  type CityRig,
+  type ProjectRigMap,
+} from '@mergecrew/domain';
+import { ORG_PROJECT_SOURCE, type OrgProjectSource } from './project-source.js';
 
 /**
  * Reads Gas City state for the product. The supervisor serves a read-only HTTP
@@ -100,6 +107,35 @@ export function rigsFromAgents(items: unknown[], configured?: string): string[] 
 const DEFAULT_TIMEOUT_MS = 1_500;
 const DEFAULT_RIG_CACHE_MS = 5_000;
 
+/** The rigs of one city, plus every project of the organization bound to one. */
+export interface CityProjectRigs extends ProjectRigMap {
+  city: string;
+  rigs: CityRig[];
+}
+
+/**
+ * The supervisor's rig rows, normalized. A rig without a name cannot be matched
+ * against a project, so it is dropped rather than surfaced as an unknown.
+ */
+export function rigRows(items: unknown[]): CityRig[] {
+  const out: CityRig[] = [];
+  for (const item of items ?? []) {
+    const record = item as Record<string, unknown>;
+    const name = typeof record?.name === 'string' ? record.name.trim() : '';
+    if (!name) continue;
+    out.push({
+      name,
+      path: typeof record.path === 'string' ? record.path : null,
+      suspended: typeof record.suspended === 'boolean' ? record.suspended : null,
+      default_branch: typeof record.default_branch === 'string' ? record.default_branch : null,
+      agent_count: typeof record.agent_count === 'number' ? record.agent_count : null,
+      running_count: typeof record.running_count === 'number' ? record.running_count : null,
+      last_activity: typeof record.last_activity === 'string' ? record.last_activity : null,
+    });
+  }
+  return out;
+}
+
 @Injectable()
 export class CityService {
   private readonly logger = new Logger(CityService.name);
@@ -109,6 +145,16 @@ export class CityService {
   /** See `knownRigs()`. `null` means nothing has been read yet. */
   private rigCache: { at: number; rigs: string[] } | null = null;
   private readonly rigCacheMs = Number(process.env.CITY_RIGS_CACHE_MS ?? DEFAULT_RIG_CACHE_MS);
+
+  /**
+   * `orgProjects` is optional so the rig binding degrades to "no projects" rather
+   * than failing a city read when the product database is not wired in.
+   */
+  constructor(
+    @Optional()
+    @Inject(ORG_PROJECT_SOURCE)
+    private readonly orgProjects?: OrgProjectSource,
+  ) {}
 
   async status(view: StatusView = 'full'): Promise<CityStatus> {
     return projectStatus(await this.read<CityStatus>('status'), view);
@@ -153,6 +199,30 @@ export class CityService {
     const rig = rigNameForOrg(orgSlug);
     const rigs = await this.knownRigs();
     return { organization: orgSlug, city: this.city, rig, known: rigs.includes(rig) };
+  }
+
+  /** The rigs the city holds, with the directories they point at. */
+  async rigs(): Promise<CityRig[]> {
+    const response = await this.read<CityList>('rigs');
+    return rigRows((response.items ?? []) as unknown[]);
+  }
+
+  /**
+   * Every project of the organization, each bound to the rig that carries it
+   * (ADR-0016 step 6).
+   *
+   * The city read and the project read run together, and an unmapped project
+   * comes back with the reason plus the command that fixes it rather than being
+   * dropped — a project the city does not carry is a configuration error the
+   * operator has to see. `CITY_PROJECT_RIGS` overrides the derivation.
+   */
+  async projectRigs(organizationId: string): Promise<CityProjectRigs> {
+    const [rigs, projects] = await Promise.all([
+      this.rigs(),
+      this.orgProjects ? this.orgProjects.listByOrganizationId(organizationId) : Promise.resolve([]),
+    ]);
+    const map = bindProjects(projects, rigs, parseRigOverrides(process.env.CITY_PROJECT_RIGS));
+    return { city: this.city, rigs, ...map };
   }
 
   private async read<T>(resource: string): Promise<T> {

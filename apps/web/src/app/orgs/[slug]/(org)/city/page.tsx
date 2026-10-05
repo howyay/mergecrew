@@ -10,8 +10,8 @@ import { Card, CardBody, CardHead, Chip, PageHead, StatBadge, StatusDot } from '
  *
  * Every section owns its own read, so one failing read never blanks the page: an
  * unreachable supervisor still leaves the tenant mapping and the navigation usable,
- * and a missing admin role is reported in the card that needed it. The four reads
- * run together, so the page costs one round trip instead of four.
+ * and a missing admin role is reported in the card that needed it. The reads run
+ * together, so the page costs one round trip instead of one per section.
  */
 
 /** Live shapes of the supervisor read API — see ops/gc/city-client.mjs for the same door outside the API. */
@@ -67,6 +67,27 @@ interface CitySession {
 interface List<T> {
   items?: T[];
   total?: number;
+}
+
+/** One project bound (or not bound) to a rig — `/admin/city/projects`. */
+interface ProjectRig {
+  projectSlug: string;
+  projectName: string;
+  repoFullName: string | null;
+  rig: string | null;
+  rigPath: string | null;
+  matched: boolean;
+  reason: string;
+  fix: string | null;
+}
+
+interface ProjectRigMap {
+  city: string;
+  rigs: { name: string; path?: string | null; suspended?: boolean | null }[];
+  items: ProjectRig[];
+  total: number;
+  unmatched: number;
+  complete: boolean;
 }
 
 type DotStatus = 'running' | 'paused' | 'idle' | 'failed' | 'done' | 'pending';
@@ -178,15 +199,18 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
   const session = await requireSession();
   const base = `/v1/orgs/${slug}/admin/city`;
 
-  const [status, tenant, agents, sessions] = await Promise.all([
+  const [status, tenant, projectRigs, agents, sessions] = await Promise.all([
     load<CityStatus>(`${base}/status?view=summary`, session),
     load<Tenant>(`${base}/tenant/${slug}`, session),
+    load<ProjectRigMap>(`${base}/projects`, session),
     load<List<Agent>>(`${base}/agents`, session),
     load<List<CitySession>>(`${base}/sessions`, session),
   ]);
 
   const agentItems = agents.ok ? (agents.data.items ?? []) : [];
   const sessionItems = sessions.ok ? (sessions.data.items ?? []) : [];
+  const projectRigItems = projectRigs.ok ? (projectRigs.data.items ?? []) : [];
+  const unmatched = projectRigs.ok ? projectRigs.data.unmatched : 0;
   const runningAgents = agentItems.filter((a) => a.running).length;
   const counts: Counts = status.ok ? (status.data.agents ?? {}) : {};
   const liveSessions = sessionItems.filter((s) => sessionStatus(s.state) === 'running').length;
@@ -263,6 +287,77 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
           </Card>
         ) : (
           <Unavailable title="Tenant mapping" message={tenant.message} />
+        )}
+      </section>
+
+      <section className="mb-6">
+        {projectRigs.ok ? (
+          <Card>
+            <CardHead
+              title="Projects"
+              meta="each project, and the rig that carries it"
+              right={
+                <StatBadge kind={unmatched > 0 ? 'warn' : 'healthy'}>
+                  {unmatched > 0
+                    ? `${unmatched} without a rig`
+                    : `${projectRigItems.length} mapped`}
+                </StatBadge>
+              }
+            />
+            {projectRigItems.length === 0 ? (
+              <CardBody>
+                <p className="m-0 text-[13px] text-muted">
+                  This organization has no projects yet, so there is nothing to map to a rig.
+                </p>
+              </CardBody>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
+                    <tr className="border-b border-ink">
+                      <th className="px-4 py-2 font-medium">Project</th>
+                      <th className="px-4 py-2 font-medium">Repository</th>
+                      <th className="px-4 py-2 font-medium">Rig</th>
+                      <th className="px-4 py-2 font-medium">Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectRigItems.map((item) => (
+                      <tr key={item.projectSlug} className="border-b border-hair-2 last:border-b-0">
+                        <td className="px-4 py-2">
+                          <div className="text-[13px] text-ink">{item.projectName}</div>
+                          <div className="font-mono text-[11.5px] text-muted">
+                            {item.projectSlug}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
+                          {item.repoFullName ?? '—'}
+                        </td>
+                        <td className="px-4 py-2">
+                          {item.matched ? (
+                            <div className="font-mono text-[11.5px] text-ink-2">{item.rig}</div>
+                          ) : (
+                            <Chip kind="high">no rig</Chip>
+                          )}
+                          {item.matched && item.rigPath && (
+                            <div className="font-mono text-[11px] text-muted">{item.rigPath}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-[12px] text-muted">
+                          <div>{item.reason}</div>
+                          {!item.matched && item.fix && (
+                            <div className="mt-1 text-[12px] text-ink-2">{item.fix}</div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        ) : (
+          <Unavailable title="Projects" message={projectRigs.message} />
         )}
       </section>
 
