@@ -10,8 +10,10 @@ import {
   beadIssueId,
   clampPriority,
   issueLabel,
+  isRetryableWriteError,
   mapIssue,
   planBeadActions,
+  retryWrite,
   renderPlan,
   toBeadCommands,
 } from '../beads-migration.mjs';
@@ -86,4 +88,58 @@ test('a missing title in a bead still counts as a difference', () => {
   const plan = planBeadActions([{ id: 'iss-9', title: 'T' }], [{ id: 'me-9', title: '', priority: 2, labels: [issueLabel('iss-9')] }]);
   assert.equal(plan.update.length, 1);
   assert.deepEqual(plan.update[0].reasons, ['title']);
+});
+
+test('a store connection failure is retryable', () => {
+  assert.equal(isRetryableWriteError(new Error('write commit result indeterminate after connection loss')), true);
+  assert.equal(isRetryableWriteError(new Error('invalid connection')), true);
+  assert.equal(isRetryableWriteError(new Error('dolt circuit breaker is open')), true);
+  assert.equal(isRetryableWriteError(new Error('validation failed: title is required')), false);
+  assert.equal(isRetryableWriteError(undefined), false);
+});
+
+test('a retryable failure is retried once and then succeeds', () => {
+  let calls = 0;
+  const retries = [];
+  const outcome = retryWrite(
+    () => {
+      calls += 1;
+      if (calls === 1) throw new Error('invalid connection');
+      return 'ok';
+    },
+    { onRetry: (attempt) => retries.push(attempt) },
+  );
+  assert.deepEqual(outcome, { result: 'ok', attempts: 2, retried: true });
+  assert.deepEqual(retries, [1]);
+  assert.equal(calls, 2);
+});
+
+test('a retryable failure that repeats is not retried forever', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryWrite(() => {
+        calls += 1;
+        throw new Error('invalid connection');
+      }),
+    /invalid connection/,
+  );
+  assert.equal(calls, 2);
+});
+
+test('a non retryable failure is not retried', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryWrite(() => {
+        calls += 1;
+        throw new Error('validation failed');
+      }),
+    /validation failed/,
+  );
+  assert.equal(calls, 1);
+});
+
+test('the first attempt records no retry', () => {
+  assert.deepEqual(retryWrite(() => 'first'), { result: 'first', attempts: 1, retried: false });
 });
