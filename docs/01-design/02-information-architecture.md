@@ -9,7 +9,6 @@
 │  Today           ← landing for an org        │
 │  Projects        ← list & create             │
 │  Inbox           ← pending approvals         │
-│  Activity        ← org-wide timeline         │
 │  Costs           ← spend & budgets           │
 │  Settings        ← org, LLM, API keys,       │
 │                    webhooks                  │
@@ -76,7 +75,6 @@ Organization
 /orgs/:org_slug                         → org Today
 /orgs/:org_slug/onboarding              → DB-derived onboarding wizard
 /orgs/:org_slug/inbox
-/orgs/:org_slug/activity
 /orgs/:org_slug/costs
 /orgs/:org_slug/settings                → general (LLM profiles inline)
 /orgs/:org_slug/settings/api-keys

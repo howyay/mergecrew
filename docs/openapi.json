@@ -1581,20 +1581,6 @@
         ]
       }
     },
-    "/v1/orgs/{slug}/activity": {
-      "get": {
-        "operationId": "ActivityController_activity",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Activity"
-        ]
-      }
-    },
     "/v1/orgs/{slug}/costs": {
       "get": {
         "operationId": "CostController_orgCosts",

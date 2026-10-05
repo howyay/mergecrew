@@ -39,14 +39,6 @@ type ApprovalRequest = {
   createdAt: string;
 };
 
-type TimelineEvent = {
-  id: string;
-  type: string;
-  occurredAt: string;
-  projectId?: string | null;
-  payload?: Record<string, unknown>;
-};
-
 /**
  * Gas City is the execution substrate for every organization (ADR-0016). The
  * landing page shows one summary line and links to the full view; when the
@@ -74,7 +66,6 @@ export default async function OrgHomePage({
     orgRes,
     projectsRes,
     inboxRes,
-    activityRes,
     spendCapRes,
     evalsRes,
     onboardingRes,
@@ -83,9 +74,6 @@ export default async function OrgHomePage({
       safe(() => api<OrgDetail>(`/v1/orgs/${slug}`, { session })),
       safe(() => api<{ items: Project[] }>(`/v1/orgs/${slug}/projects`, { session })),
       safe(() => api<{ items: ApprovalRequest[] }>(`/v1/orgs/${slug}/inbox`, { session })),
-      safe(() =>
-        api<{ items: TimelineEvent[] }>(`/v1/orgs/${slug}/activity?limit=10`, { session }),
-      ),
       safe(() =>
         api<{
           monthlySpendCapUsd: number | null;
@@ -122,7 +110,6 @@ export default async function OrgHomePage({
 
   const projects = projectsRes?.items ?? [];
   const inbox = inboxRes?.items ?? [];
-  const activity = activityRes?.items ?? [];
   const spendCap = spendCapRes;
   const cityStatus = cityStatusRes;
   const latestEval = evalsRes?.items?.[0] ?? null;
@@ -147,7 +134,6 @@ export default async function OrgHomePage({
     approvalsByProject.set(a.projectId, (approvalsByProject.get(a.projectId) ?? 0) + 1);
   }
 
-  const projectIdToSlug = new Map(projects.map((p) => [p.id, p.slug] as const));
   const orgPaused = Boolean(orgRes?.runsPausedAt);
 
   const pauseOrgRunsAction = async (reason: string | null) => {
@@ -343,54 +329,6 @@ export default async function OrgHomePage({
               </ul>
             )}
           </section>
-
-          {activity.length > 0 && (
-            <section>
-              <div className="mb-3 flex items-center justify-between">
-                <Label>Recent activity</Label>
-                <LinkButton href={`/orgs/${slug}/activity`} variant="ghost" size="sm">
-                  View all
-                </LinkButton>
-              </div>
-              <Card>
-                <ul className="m-0 list-none p-0">
-                  {activity.map((e, i) => {
-                    const projSlug = e.projectId
-                      ? projectIdToSlug.get(e.projectId)
-                      : undefined;
-                    const href = projSlug
-                      ? `/orgs/${slug}/projects/${projSlug}`
-                      : `/orgs/${slug}/activity`;
-                    return (
-                      <li
-                        key={e.id}
-                        className={i < activity.length - 1 ? 'border-b border-hair-2' : ''}
-                      >
-                        <Link
-                          href={href}
-                          className="flex items-center justify-between gap-3 px-4 py-3 text-[13px] text-ink no-underline hover:bg-paper-2"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="bg-accent-tint px-[8px] py-[2px] font-mono text-[10.5px] uppercase tracking-[0.06em] text-accent-deep">
-                              {e.type}
-                            </span>
-                            {projSlug && (
-                              <span className="font-mono text-[12px] text-ink-2">
-                                {projSlug}
-                              </span>
-                            )}
-                          </div>
-                          <span className="font-mono text-[11.5px] text-muted">
-                            {relativeTime(e.occurredAt)}
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Card>
-            </section>
-          )}
         </div>
 
         <div className="space-y-6">
