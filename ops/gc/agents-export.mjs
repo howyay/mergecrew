@@ -95,7 +95,10 @@ export function renderAgentToml(agent) {
   lines.push(`min_active_sessions = ${agent.min_active_sessions}`);
   lines.push(`max_active_sessions = ${agent.max_active_sessions}`);
   lines.push(`nudge = ${quote(agent.nudge)}`);
-  lines.push(`skills = [${(agent.skills ?? []).map(quote).join(', ')}]`);
+  // The `skills` field is deprecated as of gc v0.15.1 and becomes a hard parse error in v0.16.
+  // Skills come from the pack. Record the intent as a comment, not as a config key.
+  const skills = agent.skills ?? [];
+  if (skills.length) lines.push(`# Skills come from the pack: ${skills.join(', ')}`);
   return `${lines.join('\n')}\n`;
 }
 

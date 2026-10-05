@@ -65,12 +65,19 @@ test('the pool size is checked', () => {
 
 test('the rendered TOML carries every field gc reads', () => {
   const toml = exportAgent({ kind: 'none' }, { name: 'dev-1', rig: 'mergecrew' }).toml;
-  for (const key of ['name', 'scope', 'runtime', 'wake_mode', 'work_dir', 'harness', 'model', 'idle_timeout', 'min_active_sessions', 'max_active_sessions', 'nudge', 'skills']) {
+  for (const key of ['name', 'scope', 'runtime', 'wake_mode', 'work_dir', 'harness', 'model', 'idle_timeout', 'min_active_sessions', 'max_active_sessions', 'nudge']) {
     assert.match(toml, new RegExp(`^${key} = `, 'm'), `missing key: ${key}`);
   }
   assert.match(toml, /^name = "mergecrew\/dev-1"$/m);
   assert.match(toml, /^runtime = "local"$/m);
   assert.match(toml, /^min_active_sessions = 0$/m);
+});
+
+test('the deprecated skills key is not written, and the intent stays visible', () => {
+  const toml = exportAgent({ kind: 'none' }, { name: 'dev-1', rig: 'mergecrew' }).toml;
+  // gc v0.15.1 deprecates `skills` and v0.16 makes it a hard parse error.
+  assert.doesNotMatch(toml, /^skills = /m);
+  assert.match(toml, /^# Skills come from the pack: core\.gc-city, core\.gc-work/m);
 });
 
 test('the exporter refuses an unnamed profile', () => {
