@@ -43,6 +43,13 @@ jobs:
         with:
           node-version: '22'
       - run: pnpm install --frozen-lockfile=false --store-dir "$RUNNER_TEMP/pnpm-store"
+      - name: Bootstrap Postgres roles + extensions
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=mergecrew \
+            -v "$PWD/infra/sql/init:/sql:ro" \
+            postgres:16-alpine \
+            psql -h localhost -U mergecrew -d mergecrew -f /sql/00-roles.sql
       - run: pnpm --filter @mergecrew/db generate
       - run: pnpm --filter @mergecrew/db migrate
       - run: pnpm build
