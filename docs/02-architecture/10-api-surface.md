@@ -78,11 +78,12 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/lifecycle-templates/:name/custom-skills/:skill` | PUT / DELETE | Upsert / remove a template custom skill. |
 | `/v1/orgs/:slug/lifecycle-templates/:name/human-gates` | PUT | Replace the template's gate policy. |
 
-## Skills (global catalog)
+## Skills and tools (global catalog)
 
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/v1/skills` | GET | Global stock-skill catalog (read-only). |
+| `/v1/tools` | GET | Per-agent-kind tool surface: the skills an agent kind actually sees after read-only filtering and wire-name sanitization. |
 
 ## Runs
 

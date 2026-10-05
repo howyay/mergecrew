@@ -132,7 +132,7 @@ export function OrgSidebar({
       label: 'Library',
       items: [
         { label: 'Lifecycle templates', href: `${base}/lifecycle-templates` },
-        { label: 'Skill catalog', href: `${base}/skills` },
+        { label: 'Skills & tools', href: `${base}/skills` },
       ],
     },
     {
