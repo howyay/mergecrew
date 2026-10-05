@@ -166,6 +166,8 @@ Three layered budgets enforced by `BudgetTracker` (`packages/agent-runtime/src/b
 - **Per-changeset.** Optional `agent.budget.{tokens,usd}` cap. After every model turn (and every tool call for safety) the tracker is consulted; on exhaustion the loop returns `budget_exhausted`.
 - **Per-run / per-org.** Hard ceilings tracked outside the runtime; the orchestrator pauses dispatch when they are reached.
 
+On top of those counts, a `RepeatGuard` ([`packages/agent-runtime/src/repeat-guard.ts`](../../packages/agent-runtime/src/repeat-guard.ts)) fails the step when the *same* tool call repeats three times consecutively — the loop returns `failed` with reason `tool_call_repeat_detected` from `toolsNode`. This catches a stuck agent at the loop rather than letting it drain the rest of its tool budget. See [Transcript clutter control](../03-infrastructure/38-transcript-clutter.md).
+
 ## Observability per step
 
 Each agent step produces:

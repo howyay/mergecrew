@@ -18,6 +18,7 @@ import {
 import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
 import { PolicyEngine, type PolicyDecision } from './policy.js';
 import { BudgetTracker } from './budget.js';
+import { RepeatGuard, toolCallSignature } from './repeat-guard.js';
 
 export interface RunCtx {
   organizationId: string;
@@ -166,6 +167,8 @@ export async function runAgentStep(ctx: RunCtx): Promise<StepOutcome> {
   const maxIters = agent.maxStepsPerRun ?? 12;
   const maxToolCalls = agent.maxToolCallsPerStep ?? 8;
   let toolCallSeq = 0;
+  // Detects an agent stuck re-issuing the same tool call (see repeat-guard.ts).
+  const repeatGuard = new RepeatGuard();
 
   const agentNode = async (state: State): Promise<Partial<State>> => {
     if (abortSignal.aborted) {
@@ -255,6 +258,17 @@ export async function runAgentStep(ctx: RunCtx): Promise<StepOutcome> {
       // undefined and the existing error path handles it.
       const skillName = wireToOriginal.get(tc.name) ?? tc.name;
       const input = tc.args ?? {};
+
+      // Clutter control: fail the step when the agent re-issues the same
+      // tool call three times in a row instead of burning budget on an
+      // identical, non-progressing call.
+      if (repeatGuard.observe(toolCallSignature(skillName, input))) {
+        return {
+          messages: newMessages,
+          toolCallsMade,
+          outcome: { kind: 'failed', reason: 'tool_call_repeat_detected' },
+        };
+      }
 
       const decision = ctx.policy.check(skillName, input);
       if (!decision.ok) {
