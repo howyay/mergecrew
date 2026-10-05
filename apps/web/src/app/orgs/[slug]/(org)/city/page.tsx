@@ -49,8 +49,12 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
   const { status, tenant, notice } = await read(slug, session);
 
   return (
-    <>
-      <PageHead title="Gas City" subtitle="The orchestrator that runs this organization's work." />
+    <main className="mx-auto max-w-[1280px] px-4 py-5 sm:px-9 sm:py-7">
+      <PageHead
+        crumb={[{ label: slug, href: `/orgs/${slug}` }, { label: 'Gas City' }]}
+        title="Gas City"
+        meta={<span className="font-mono text-[12.5px] text-muted">the orchestrator for this organization</span>}
+      />
       {notice ? (
         <Card>
           <p className="text-sm text-neutral-600">{notice}</p>
@@ -79,6 +83,6 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
           </p>
         </Card>
       ) : null}
-    </>
+    </main>
   );
 }
