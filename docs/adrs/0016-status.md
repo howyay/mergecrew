@@ -1,6 +1,6 @@
 # ADR-0016 status
 
-Date: 2026-10-05. This page records the state of the migration. The pull request list is the source
+Date: 2026-10-05. This page records the state of the migration. The series landed in `main` through #23 (merge commit `27f128b`). The pull request list is the source
 of truth: every number below was read from the repository, not from memory.
 
 ## Acceptance criteria
@@ -8,7 +8,7 @@ of truth: every number below was read from the repository, not from memory.
 | Criterion | State | Evidence |
 | - | - | - |
 | 1. Every work item lands as a pull request with visible checks and a review conclusion | Met | 26 pull requests. `#2` to `#26` each carry a passing `build` check. The build job runs the tool suite (147 tests) and the API spec (10 tests). Each body is a packet with the scope, the check evidence, and a review conclusion. |
-| 2. DEDUP-1 to DEDUP-6 each land as a reviewed pull request | Open | All six have open pull requests with green checks, and `#23` merges the series for a one-action landing. The merge is the reviewer's decision. |
+| 2. DEDUP-1 to DEDUP-6 each land as a reviewed pull request | Met | Landed in `main` through #23 (merge commit `27f128b`). CI on `main`: success, with the tooling suite (166 tests) and the API suite (10 tests). |
 | 3. The frontend drives Gas City with an organization to rig map | Met | `#6` (client), `#8` (contract), `#13` (tenant map), `#14` (web page), `#20` (boundary enforcement). |
 | 4. The Dolt error rate stays zero | Met | The health gate (`#16`) reports the error window and the count. Since the fix: 0. |
 
@@ -104,7 +104,16 @@ node ops/gc/beads-migration.mjs --from-json=issues.json
 node ops/gc/retire-execute.mjs  --root=. --targets=apps/runner
 ```
 
+## After the landing
+
+The series merged into `main` as commit `27f128b`, and CI on `main` passed.
+
+| Check on `main` | Result |
+| - | - |
+| Tooling suite | 166 tests, 165 passed, 1 skipped (the live check skips without a supervisor) |
+| API suite | 10 passed |
+
 ## What remains
 
-1. The merge. Every pull request is green and mergeable, and `#23` merges the series for a one-action landing. The order is the reviewer's call.
-2. `me-kgy` is open and pre-existing: `pnpm --filter @mergecrew/api typecheck` reports errors in uncommitted work. The new module adds none.
+1. `me-kgy` is open and is a provisioning gap, not a code defect: the workstation has no generated Prisma client and fifteen packages have no `dist`. `ops/gc/local-readiness.mjs` names the blockers in one command.
+2. The migration tools are the foundation. The product still reads and writes its own stores; moving a live path onto beads, formulas, or orders is the next slice, and it is now a change against `main`.
