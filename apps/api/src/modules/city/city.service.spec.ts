@@ -292,20 +292,19 @@ describe('CityService project rigs', () => {
     } as OrgProjectSource);
 
     const result = await service.projectRigs('org-1');
+    const [blank, mapped] = result.items;
 
     expect(result.city).toBe('gascity');
     expect(result.rigs.map((rig) => rig.name)).toEqual(['mergecrew']);
-    expect(result.items).toEqual([
-      expect.objectContaining({ projectSlug: 'blank', matched: false, rig: null }),
-      expect.objectContaining({
-        projectSlug: 'mergecrew',
-        rig: 'mergecrew',
-        rigPath: '/home/me/projects/mergecrew',
-        matched: true,
-        fix: null,
-      }),
-    ]);
-    expect(result.items[0].fix).toContain('gc rig add');
+    expect(blank).toMatchObject({ projectSlug: 'blank', matched: false, rig: null });
+    expect(blank?.fix).toContain('gc rig add');
+    expect(mapped).toMatchObject({
+      projectSlug: 'mergecrew',
+      rig: 'mergecrew',
+      rigPath: '/home/me/projects/mergecrew',
+      matched: true,
+      fix: null,
+    });
     expect(result).toMatchObject({ total: 2, unmatched: 1, complete: false });
   });
 
