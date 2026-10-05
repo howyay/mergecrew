@@ -2562,6 +2562,62 @@
           "Eval"
         ]
       }
+    },
+    "/v1/orgs/{slug}/admin/city/status": {
+      "get": {
+        "operationId": "CityController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/agents": {
+      "get": {
+        "operationId": "CityController_agents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/sessions": {
+      "get": {
+        "operationId": "CityController_sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/tenant/{orgSlug}": {
+      "get": {
+        "operationId": "CityController_tenant",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
     }
   },
   "info": {

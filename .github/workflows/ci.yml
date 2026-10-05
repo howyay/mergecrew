@@ -46,6 +46,16 @@ jobs:
       # path that races across the co-located runners. The per-runner store
       # below sits on the same volume as the workspace, so linking is fast.
       - run: pnpm install --frozen-lockfile=false --store-dir "$RUNNER_TEMP/pnpm-store"
+      - name: ADR-0016 tooling tests
+        # The tools under ops/gc need no install step and run in about a second,
+        # so they fail fast. The guard keeps the step green on a tree where those
+        # files have not landed yet.
+        run: |
+          if [ -d ops/gc/test ]; then
+            node --test "ops/gc/test/*.test.mjs"
+          else
+            echo "ops/gc/test is not present yet; skipping"
+          fi
       - name: Bootstrap Postgres roles + extensions
         # Run psql from a container so the step doesn't depend on the runner
         # image shipping postgresql-client. --network host reaches the service
