@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ApiError, api, type Session } from '@/lib/api';
+import { relativeTime } from '@/lib/format';
 import { requireSession } from '@/lib/session';
 import { Card, CardBody, CardHead, Chip, PageHead, StatBadge, StatusDot } from '@/components/ui';
 
@@ -136,17 +137,18 @@ function formatUptime(seconds?: number): string {
   return `${minutes}m`;
 }
 
-/** Timestamps arrive as ISO strings or epoch seconds; anything else is shown as-is. */
-function formatAgo(value?: string | number): string {
+/**
+ * Session timestamps arrive as ISO strings or epoch seconds, and the shared
+ * `relativeTime` helper owns the wording ("just now", "3m ago"), so this only
+ * normalizes and falls back to the raw value.
+ */
+function ago(value?: string | number): string {
   if (value == null || value === '') return '—';
-  const ms =
-    typeof value === 'number' ? (value < 1e12 ? value * 1000 : value) : Date.parse(String(value));
-  if (!Number.isFinite(ms)) return String(value);
-  const secs = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (secs < 60) return `${secs}s ago`;
-  if (secs < 3_600) return `${Math.round(secs / 60)}m ago`;
-  if (secs < 86_400) return `${Math.round(secs / 3_600)}h ago`;
-  return `${Math.round(secs / 86_400)}d ago`;
+  const date =
+    typeof value === 'number'
+      ? new Date(value < 1e12 ? value * 1000 : value)
+      : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? String(value) : relativeTime(date);
 }
 
 function Row({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
@@ -364,7 +366,7 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
                           {session_.template ?? session_.kind ?? '—'}
                         </td>
                         <td className="px-4 py-2">{session_.provider ?? session_.display_name ?? '—'}</td>
-                        <td className="px-4 py-2 text-muted">{formatAgo(session_.last_active)}</td>
+                        <td className="px-4 py-2 text-muted">{ago(session_.last_active)}</td>
                       </tr>
                     ))}
                   </tbody>

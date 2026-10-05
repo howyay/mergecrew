@@ -47,6 +47,21 @@ type TimelineEvent = {
   payload?: Record<string, unknown>;
 };
 
+/**
+ * Gas City is the execution substrate for every organization (ADR-0016). The
+ * landing page shows one summary line and links to the full view; when the
+ * supervisor is unreachable or the caller is not an admin, the read returns null
+ * and the line is simply absent.
+ */
+type CityStatusSummary = {
+  name?: string;
+  version?: string;
+  suspended?: boolean;
+  agent_count?: number;
+  rig_count?: number;
+  agents?: { total?: number; running?: number };
+};
+
 export default async function OrgHomePage({
   params,
 }: {
@@ -55,8 +70,16 @@ export default async function OrgHomePage({
   const { slug } = await params;
   const session = await requireSession();
 
-  const [orgRes, projectsRes, inboxRes, activityRes, spendCapRes, evalsRes, onboardingRes] =
-    await Promise.all([
+  const [
+    orgRes,
+    projectsRes,
+    inboxRes,
+    activityRes,
+    spendCapRes,
+    evalsRes,
+    onboardingRes,
+    cityStatusRes,
+  ] = await Promise.all([
       safe(() => api<OrgDetail>(`/v1/orgs/${slug}`, { session })),
       safe(() => api<{ items: Project[] }>(`/v1/orgs/${slug}/projects`, { session })),
       safe(() => api<{ items: ApprovalRequest[] }>(`/v1/orgs/${slug}/inbox`, { session })),
@@ -94,12 +117,14 @@ export default async function OrgHomePage({
           complete: boolean;
         }>(`/v1/orgs/${slug}/onboarding`, { session }),
       ),
+      safe(() => api<CityStatusSummary>(`/v1/orgs/${slug}/admin/city/status`, { session })),
     ]);
 
   const projects = projectsRes?.items ?? [];
   const inbox = inboxRes?.items ?? [];
   const activity = activityRes?.items ?? [];
   const spendCap = spendCapRes;
+  const cityStatus = cityStatusRes;
   const latestEval = evalsRes?.items?.[0] ?? null;
   const evalPassRate =
     latestEval && latestEval.totalCases > 0
@@ -220,6 +245,33 @@ export default async function OrgHomePage({
           n={latestEval?.source ?? 'no evals yet'}
         />
       </section>
+
+      {cityStatus ? (
+        <section className="mb-6">
+          <Link href={`/orgs/${slug}/city`} className="block no-underline">
+            <Card className="flex flex-wrap items-center gap-x-5 gap-y-2 transition-colors hover:border-accent">
+              <span className="flex items-center gap-2 text-[13.5px] font-medium">
+                <StatusDot status={cityStatus.suspended ? 'paused' : 'running'} />
+                Gas City
+              </span>
+              <span className="font-mono text-[12px] text-muted">
+                {cityStatus.name ?? 'unknown'}
+                {cityStatus.version ? ` v${cityStatus.version}` : ''}
+              </span>
+              <span className="text-[13px] text-ink-2">
+                {cityStatus.agents?.running ?? 0} of{' '}
+                {cityStatus.agents?.total ?? cityStatus.agent_count ?? 0} agents running
+              </span>
+              <span className="text-[13px] text-ink-2">
+                {cityStatus.rig_count ?? 0} {cityStatus.rig_count === 1 ? 'rig' : 'rigs'}
+              </span>
+              <span className="ml-auto font-mono text-[11px] uppercase tracking-[0.06em] text-muted">
+                View city &rarr;
+              </span>
+            </Card>
+          </Link>
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-6">
