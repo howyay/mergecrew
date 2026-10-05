@@ -125,6 +125,43 @@ export function renderPlan(plan, { applied = false } = {}) {
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
+/**
+ * A write failure that is worth one retry.
+ *
+ * The Gas City store answers an indeterminate commit when the connection drops: the client cannot
+ * know whether the write landed. A create that carries the bridge label is idempotent, so a retry
+ * is safe, but it must be bounded and it must be visible.
+ */
+export function isRetryableWriteError(error) {
+  const text = String(error?.message ?? error ?? '');
+  return [
+    /invalid connection/i,
+    /result indeterminate/i,
+    /connection loss/i,
+    /circuit[- ]breaker/i,
+    /i\/o timeout/i,
+  ].some((pattern) => pattern.test(text));
+}
+
+/**
+ * Run a write, and retry it once when the failure is retryable.
+ * Returns { result, attempts, retried, error }.
+ */
+export function retryWrite(run, { attempts = 2, onRetry } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return { result: run(), attempts: attempt, retried: attempt > 1 };
+    } catch (error) {
+      lastError = error;
+      const retryable = isRetryableWriteError(error);
+      if (!retryable || attempt === attempts) break;
+      if (onRetry) onRetry(attempt, error);
+    }
+  }
+  throw lastError;
+}
+
 export function readBeads(runner = defaultRunner) {
   const out = runner(['bd', 'list', '--json']);
   const data = JSON.parse(out);
@@ -150,9 +187,21 @@ function main(argv) {
   const plan = planBeadActions(issues, beads);
   const apply = args.includes('--apply');
   if (apply) {
+    let retried = 0;
     for (const command of toBeadCommands(plan)) {
-      defaultRunner([...command, '--json'].filter((part) => part !== '--json'));
+      const outcome = retryWrite(() => defaultRunner(command), {
+        attempts: 2,
+        onRetry: (attempt, error) => {
+          retried += 1;
+          const reason = String(error?.message ?? error).split('\n')[0].slice(0, 80);
+          console.error(`retry ${attempt} for ${command.slice(0, 3).join(' ')}: ${reason}`);
+        },
+      });
+      if (outcome.retried && process.env.GC_BEADS_MIGRATION_QUIET !== '1') {
+        console.error(`applied after a retry: ${command.slice(0, 3).join(' ')}`);
+      }
     }
+    if (retried && process.env.GC_BEADS_MIGRATION_QUIET !== '1') console.error(`retries: ${retried}`);
   }
   console.log(renderPlan(plan, { applied: apply }));
   return 0;
