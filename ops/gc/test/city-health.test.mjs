@@ -9,6 +9,7 @@ import {
   MAX_START_PENDING_MINUTES,
   MIN_SCHEDULE_MINUTES,
   REQUIRED_ORDERS,
+  checkEndpointMirror,
   checkOrders,
   checkSessions,
   countDoltErrors,
@@ -164,4 +165,35 @@ test('the report shows the error window', () => {
     since: '2026/10/05 01:00',
   });
   assert.match(report, /Store errors since 2026\/10\/05 01:00: 1 \(2026\/10\/05 01:20 to 2026\/10\/05 01:20\)/);
+});
+
+test('the endpoint mirror passes when every rig matches the city', () => {
+  const problems = checkEndpointMirror({ cityPort: '49943', rigs: [{ name: 'mergecrew', port: '49943' }] });
+  assert.deepEqual(problems, []);
+});
+
+test('a missing rig port file is a problem (the 2026-10-05 write failure)', () => {
+  const problems = checkEndpointMirror({ cityPort: '49943\n', rigs: [{ name: 'mergecrew', port: '' }] });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /rig "mergecrew" has no endpoint port file/);
+});
+
+test('a mismatch between the rig and the city is a problem', () => {
+  const problems = checkEndpointMirror({ cityPort: '49943', rigs: [{ name: 'other', port: '49944' }] });
+  assert.match(problems.join(' '), /points at port 49944, and the city serves 49943/);
+});
+
+test('a city without a port file is a problem', () => {
+  assert.match(checkEndpointMirror({ cityPort: '', rigs: [] }).join(' '), /the city has no endpoint port file/);
+});
+
+test('runHealth reports the mirror problems', () => {
+  const result = runHealth({
+    orders: [],
+    logText: '',
+    sessions: [],
+    mirror: { cityPort: '49943', rigs: [{ name: 'r', port: '' }] },
+  });
+  assert.equal(result.mirrorProblems.length, 1);
+  assert.match(result.report, /Endpoint mirror problems: 1/);
 });

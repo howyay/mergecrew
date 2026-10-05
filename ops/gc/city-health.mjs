@@ -139,18 +139,43 @@ export function errorWindow(lines) {
   return { first: stamps[0], last: stamps[stamps.length - 1] };
 }
 
-export function renderHealth({ orders, doltErrors, sessions, since }) {
+/**
+ * Check that every rig mirror points at the city endpoint.
+ *
+ * A rig holds a `.beads/dolt-server.port` file. On 2026-10-05 the file went missing on the mergecrew
+ * rig: reads still worked, and every write failed with an invalid connection.
+ */
+export function checkEndpointMirror({ cityPort, rigs } = {}) {
+  const problems = [];
+  const city = String(cityPort ?? '').trim();
+  if (!city) problems.push('the city has no endpoint port file');
+  for (const rig of rigs ?? []) {
+    const port = String(rig?.port ?? '').trim();
+    if (!port) {
+      problems.push(`rig "${rig?.name ?? '(unnamed)'}" has no endpoint port file, so its mirror does not point at the city`);
+      continue;
+    }
+    if (city && port !== city) {
+      problems.push(`rig "${rig?.name ?? '(unnamed)'}" points at port ${port}, and the city serves ${city}`);
+    }
+  }
+  return problems;
+}
+
+export function renderHealth({ orders, doltErrors, sessions, mirror = [], since }) {
   const lines = ['# Gas City health', ''];
   const window = errorWindow(doltErrors);
   const where = window ? ` (${window.first} to ${window.last})` : '';
   lines.push(`Store errors since ${since ?? 'the start of the log'}: ${doltErrors.length}${where}`);
   lines.push(`Order problems: ${orders.length}`);
   lines.push(`Session problems: ${sessions.length}`);
+  lines.push(`Endpoint mirror problems: ${mirror.length}`);
   lines.push('');
   const sections = [
     ['Store errors', doltErrors],
     ['Orders', orders],
     ['Sessions', sessions],
+    ['Endpoint mirror', mirror],
   ];
   for (const [title, items] of sections) {
     lines.push(`## ${title}`);
@@ -166,11 +191,18 @@ export function logPath() {
   return process.env.GC_SUPERVISOR_LOG ?? join(homedir(), '.gc', 'supervisor.log');
 }
 
-export function runHealth({ orders = [], logText = '', sessions = [], since } = {}) {
+export function runHealth({ orders = [], logText = '', sessions = [], mirror = [], since } = {}) {
   const orderProblems = checkOrders(orders);
   const doltErrors = countDoltErrors(logText, { since });
   const sessionProblems = checkSessions(sessions);
-  return { orderProblems, doltErrors, sessionProblems, report: renderHealth({ orders: orderProblems, doltErrors, sessions: sessionProblems, since }) };
+  const mirrorProblems = checkEndpointMirror(mirror);
+  return {
+    orderProblems,
+    doltErrors,
+    sessionProblems,
+    mirrorProblems,
+    report: renderHealth({ orders: orderProblems, doltErrors, sessions: sessionProblems, mirror: mirrorProblems, since }),
+  };
 }
 
 async function main(argv) {
@@ -192,6 +224,24 @@ async function main(argv) {
     return Array.isArray(data) ? data : (data.items ?? data.orders ?? data.sessions ?? []);
   };
 
+  // The endpoint mirror: the city port, and each rig's port file.
+  const portOf = (dir) => {
+    try {
+      return readFileSync(join(dir, '.beads', 'dolt-server.port'), 'utf8').trim();
+    } catch {
+      return '';
+    }
+  };
+  const readRigs = () => {
+    const out = execFileSync('gc', ['rig', 'list', '--json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, cwd: cityDir });
+    const data = JSON.parse(out);
+    return data.rigs ?? [];
+  };
+  const mirror = {
+    cityPort: portOf(cityDir),
+    rigs: readRigs().map((rig) => ({ name: rig.name, port: rig.path ? portOf(rig.path) : '' })),
+  };
+
   let logText = '';
   try {
     logText = readFileSync(arg('--log') ?? logPath(), 'utf8');
@@ -199,9 +249,11 @@ async function main(argv) {
     logText = '';
   }
 
-  const result = runHealth({ orders: read('order'), sessions: read('session'), logText, since });
+  const result = runHealth({ orders: read('order'), sessions: read('session'), logText, mirror, since });
   console.log(result.report);
-  return result.orderProblems.length || result.doltErrors.length || result.sessionProblems.length ? 1 : 0;
+  const failed =
+    result.orderProblems.length + result.doltErrors.length + result.sessionProblems.length + result.mirrorProblems.length;
+  return failed ? 1 : 0;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
