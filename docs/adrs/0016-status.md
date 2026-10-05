@@ -7,7 +7,7 @@ of truth: every number below was read from the repository, not from memory.
 
 | Criterion | State | Evidence |
 | - | - | - |
-| 1. Every work item lands as a pull request with visible checks and a review conclusion | Met | 24 pull requests. `#2` to `#24` each carry a passing `build` check, and the build job now runs the tool suite. Each body is a packet with the scope, the check evidence, and a review conclusion. |
+| 1. Every work item lands as a pull request with visible checks and a review conclusion | Met | 26 pull requests. `#2` to `#26` each carry a passing `build` check. The build job runs the tool suite (147 tests) and the API spec (10 tests). Each body is a packet with the scope, the check evidence, and a review conclusion. |
 | 2. DEDUP-1 to DEDUP-6 each land as a reviewed pull request | Open | All six have open pull requests with green checks, and `#23` merges the series for a one-action landing. The merge is the reviewer's decision. |
 | 3. The frontend drives Gas City with an organization to rig map | Met | `#6` (client), `#8` (contract), `#13` (tenant map), `#14` (web page), `#20` (boundary enforcement). |
 | 4. The Dolt error rate stays zero | Met | The health gate (`#16`) reports the error window and the count. Since the fix: 0. |
@@ -36,7 +36,7 @@ Each gate catches a failure that looks like success.
 
 | Gate | Pull request | What it proves | Live result (2026-10-05) |
 | - | - | - | - |
-| Health | #16 | No store-write error, no too-fast order, no stuck session start | 0 errors, 0 order problems, 0 session problems |
+| Health | #16 | No store-write error, no too-fast order, no stuck session start, and no drifted rig mirror | 0 errors, 0 order problems, 0 session problems, 0 mirror problems |
 | Formula | #17 | Every exported formula compiles into a sound graph | 5 of 5, 0 problems |
 | Session contract | #19 | Every routed work item has a live session that can claim it | 0 routed, 0 stuck |
 | Order | #21 | Every declared order reached the city and can fire | 10 orders in the city, 0 problems |
@@ -72,6 +72,8 @@ The step is also in `#23`, so landing the series brings both the tools and the c
 | #22 | This status page |
 | #23 | The series integration: 21 branches, 0 conflicts, 147 tests |
 | #24 | The CI step that runs the tool suite |
+| #25 | The agent and session lists on the organization page |
+| #26 | The jest configuration, and the first API spec (10 tests) |
 | #1 | The first end-to-end run (the polecat branch) |
 
 ## Findings
@@ -79,7 +81,9 @@ The step is also in `#23`, so landing the series brings both the tools and the c
 | Bead | Finding | State |
 | - | - | - |
 | `me-kgy` | `pnpm --filter @mergecrew/api typecheck` is red for pre-existing reasons | Open. The errors are in uncommitted work. The new module adds none. |
-| `me-3f0` | `apps/api` has jest but no TypeScript transform, so an API spec cannot run | Open |
+| `me-3f0` | `apps/api` has jest but no TypeScript transform, so an API spec cannot run | Closed in #26. jest is configured, and the city spec runs in CI. |
+| `me-pwi` | Store writes fail intermittently | Closed in #15. The writer retries a retryable failure once and prints it. A probe measured 5 of 5 writes succeeding. |
+| `me-qep` | A rig mirror can drift, and writes fail while reads pass | Closed in #16. The health gate reads the city port and every rig port file. |
 | `me-ssq` | PR #4 needed a regenerated OpenAPI spec and SDK types | Closed. Regenerated on a Linux runner, because this workstation has no Prisma engine. |
 
 ## How to reproduce
@@ -102,6 +106,5 @@ node ops/gc/retire-execute.mjs  --root=. --targets=apps/runner
 
 ## What remains
 
-1. The merge. Every pull request is green and mergeable. The order is the reviewer's call.
-2. The web app reads the city status only. The agent and session views are not built.
-3. Two findings above are open, and both are pre-existing.
+1. The merge. Every pull request is green and mergeable, and `#23` merges the series for a one-action landing. The order is the reviewer's call.
+2. `me-kgy` is open and pre-existing: `pnpm --filter @mergecrew/api typecheck` reports errors in uncommitted work. The new module adds none.
