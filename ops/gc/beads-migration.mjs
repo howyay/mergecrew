@@ -170,8 +170,8 @@ export function readBeads(runner = defaultRunner) {
   return [];
 }
 
-function defaultRunner(args) {
-  return execFileSync('gc', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+function defaultRunner(args, cwd) {
+  return execFileSync('gc', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...(cwd ? { cwd } : {}) });
 }
 
 function main(argv) {
@@ -179,11 +179,13 @@ function main(argv) {
   const arg = (flag) => args.find((a) => a.startsWith(`${flag}=`))?.split('=').slice(1).join('=');
   const path = arg('--from-json');
   if (!path) {
-    console.error('usage: node ops/gc/beads-migration.mjs --from-json=<issues.json> [--apply]');
+    console.error('usage: node ops/gc/beads-migration.mjs --from-json=<issues.json> [--city-dir=<city>] [--apply]');
     return 2;
   }
   const issues = JSON.parse(readFileSync(path, 'utf8'));
-  const beads = readBeads();
+  // `gc` answers only inside a city, and the tool may run from anywhere.
+  const cityDir = arg('--city-dir') ?? process.env.GC_CITY_PATH ?? process.cwd();
+  const beads = readBeads((args2) => defaultRunner(args2, cityDir));
   const plan = planBeadActions(issues, beads);
   const apply = args.includes('--apply');
   if (apply) {
