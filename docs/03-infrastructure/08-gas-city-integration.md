@@ -78,10 +78,16 @@ The API module `apps/api/src/modules/city` exposes the reads. It reuses `RoleGua
 
 | Route | Result |
 | - | - |
-| `GET /v1/orgs/:slug/admin/city/status` | city state |
+| `GET /v1/orgs/:slug/admin/city/status` | city state; `?view=summary` keeps the nine fields the pages read and drops `agent_details` |
 | `GET /v1/orgs/:slug/admin/city/agents` | agent list |
 | `GET /v1/orgs/:slug/admin/city/sessions` | session list |
 | `GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` | the rig for an organization |
+
+The supervisor always answers with the whole status, `agent_details` included, and ignores query
+parameters, so the `view=summary` projection happens in `CityService`: a keep-list of the nine fields
+the pages read, which took the payload from 5,234 to 220 bytes on the reference city. The dropped block
+is the agent list, so the saving grows with the agent count. A caller that omits `view` still gets the
+full status.
 
 | Environment variable | Default | Meaning |
 | - | - | - |

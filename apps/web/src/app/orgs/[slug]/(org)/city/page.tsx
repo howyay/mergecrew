@@ -179,7 +179,7 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
   const base = `/v1/orgs/${slug}/admin/city`;
 
   const [status, tenant, agents, sessions] = await Promise.all([
-    load<CityStatus>(`${base}/status`, session),
+    load<CityStatus>(`${base}/status?view=summary`, session),
     load<Tenant>(`${base}/tenant/${slug}`, session),
     load<List<Agent>>(`${base}/agents`, session),
     load<List<CitySession>>(`${base}/sessions`, session),

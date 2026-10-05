@@ -117,7 +117,7 @@ export default async function OrgHomePage({
           complete: boolean;
         }>(`/v1/orgs/${slug}/onboarding`, { session }),
       ),
-      safe(() => api<CityStatusSummary>(`/v1/orgs/${slug}/admin/city/status`, { session })),
+      safe(() => api<CityStatusSummary>(`/v1/orgs/${slug}/admin/city/status?view=summary`, { session })),
     ]);
 
   const projects = projectsRes?.items ?? [];
