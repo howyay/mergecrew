@@ -13,6 +13,7 @@ import {
   checkSessions,
   countDoltErrors,
   cronMinutes,
+  errorWindow,
   logStamp,
   renderHealth,
   runHealth,
@@ -144,4 +145,23 @@ test('a wrapped error before the mark is not counted', () => {
     '2026/10/05 05:00:00 gc: fine',
   ].join('\n');
   assert.equal(countDoltErrors(log, { since: '2026/10/05 04:30' }).length, 0);
+});
+
+test('errorWindow reports the span of the counted errors', () => {
+  const lines = [
+    '2026/10/05 01:20:00 gc: invalid connection',
+    '2026/10/05 03:00:00 gc: circuit-breaker open',
+  ];
+  assert.deepEqual(errorWindow(lines), { first: '2026/10/05 01:20', last: '2026/10/05 03:00' });
+  assert.equal(errorWindow([]), null);
+});
+
+test('the report shows the error window', () => {
+  const report = renderHealth({
+    orders: [],
+    doltErrors: ['2026/10/05 01:20:00 gc: invalid connection'],
+    sessions: [],
+    since: '2026/10/05 01:00',
+  });
+  assert.match(report, /Store errors since 2026\/10\/05 01:00: 1 \(2026\/10\/05 01:20 to 2026\/10\/05 01:20\)/);
 });

@@ -127,9 +127,23 @@ export function checkSessions(sessions, now = Date.now(), { maxPendingMinutes = 
   return problems;
 }
 
+/** The time window the counted errors fall in, so a pre-fix window is obvious. */
+export function errorWindow(lines) {
+  const stamps = [];
+  for (const line of lines ?? []) {
+    const match = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2})/);
+    if (match) stamps.push(match[1]);
+  }
+  if (!stamps.length) return null;
+  stamps.sort();
+  return { first: stamps[0], last: stamps[stamps.length - 1] };
+}
+
 export function renderHealth({ orders, doltErrors, sessions, since }) {
   const lines = ['# Gas City health', ''];
-  lines.push(`Store errors since ${since ?? 'the start of the log'}: ${doltErrors.length}`);
+  const window = errorWindow(doltErrors);
+  const where = window ? ` (${window.first} to ${window.last})` : '';
+  lines.push(`Store errors since ${since ?? 'the start of the log'}: ${doltErrors.length}${where}`);
   lines.push(`Order problems: ${orders.length}`);
   lines.push(`Session problems: ${sessions.length}`);
   lines.push('');
