@@ -1,0 +1,35 @@
+# Temporary workflow: export docs/openapi.json on a Linux runner.
+#
+# Local NixOS has no Prisma engine, so the export cannot run on the workstation.
+# This workflow produces the file as an artifact. It is deleted from the branch
+# before the pull request is finalized.
+name: OpenAPI export
+
+on:
+  push:
+    branches: [gc/api-city-module]
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ${{ vars.RUNNER_DEFAULT || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate the Prisma client
+        run: pnpm --filter @mergecrew/db exec prisma generate
+      - name: Export the OpenAPI spec
+        run: pnpm --filter @mergecrew/api openapi:export
+      - name: Upload the spec
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-json
+          path: docs/openapi.json
+          if-no-files-found: error
