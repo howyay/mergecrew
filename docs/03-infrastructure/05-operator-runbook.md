@@ -67,6 +67,21 @@ Mergecrew checks the org-level gates at *step entry* so one LLM call can't push 
 
 **Source.** `apps/runner/src/step.ts` (look for `projectSensitivePatterns`). Policy engine: `packages/agent-runtime/src/policy.ts`.
 
+### Agent looped on the same tool call (`tool_call_repeat_detected`)
+<a id="tool-call-repeat"></a>
+
+**Symptom.** Step ends with `outcome.kind: 'failed'` and `failure_reason` `tool_call_repeat_detected`. The transcript shows the same tool call — same skill, same arguments — issued three times in a row with no state change between them.
+
+**Likely cause.** The model is stuck: it keeps proposing an identical call instead of reading the result and moving on. Usually one of (a) the tool result didn't answer the question the model is really asking, so it retries verbatim; (b) the prompt under-specifies the goal, so the agent has nothing new to try; (c) the skill returns a success-shaped empty result the model reads as "didn't run." The guard trips at **3 consecutive identical calls** (`MAX_CONSECUTIVE_DUPLICATE_TOOL_CALLS`) so the loop stops in place instead of burning the rest of the step's tool budget.
+
+**Recovery.**
+1. Open the transcript (run-detail → the failed agent → "Open transcript") and find the repeated call. Read the `ToolMessage` it got back — a repeat is almost always a *result* problem, not a *call* problem.
+2. If the skill returned an error-shaped or empty payload, fix the skill (or its input contract) rather than loosening the guard.
+3. If the agent simply had no next step, tighten its system prompt with the explicit next action, or split the step. See the clutter-control guide ([38-transcript-clutter.md](38-transcript-clutter.md)) for the authoring checklist.
+4. Do **not** retry the same run unchanged — it will loop again. The guard is a signal, not the disease.
+
+**Source.** `packages/agent-runtime/src/repeat-guard.ts` (detector), `packages/agent-runtime/src/loop.ts` (wired in `toolsNode`, fails the step with `tool_call_repeat_detected`).
+
 ### GitHub App can't clone the repo
 <a id="vcs-clone-failed"></a>
 

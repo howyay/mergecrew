@@ -24,4 +24,5 @@ export interface TrackerProvider {
   listIssues(q: ListIssuesQuery): Promise<Issue[]>;
   createIssue(input: CreateIssueInput): Promise<Issue>;
   commentIssue(id: string, body: string): Promise<void>;
+  parseDecisionComment?(body: string): { decision: 'accept' | 'reject'; reason?: string } | null;
 }

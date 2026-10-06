@@ -67,6 +67,7 @@ Concrete feature inventory grouped by surface. Each feature has a brief descript
 |---|---|---|
 | Per-transition gate config: `auto` / `notify` / `require-approval` | All | Implemented |
 | Approval inbox in the web UI | All | Implemented |
+| Idea gate: an idea waits for a human decision before it can seed a run | Theo | Implemented |
 | Approval via Slack DM action buttons | Theo | Planned |
 | Approval via email | Theo | Planned |
 | Heuristic auto-escalation (auth, payments, migrations) | Mira | In progress |
@@ -90,7 +91,7 @@ Concrete feature inventory grouped by surface. Each feature has a brief descript
 | Feature | Persona | Status |
 |---|---|---|
 | Live timeline view per project | All | Implemented |
-| Org-wide activity feed | Mira | Implemented |
+| Org-wide activity feed | Mira | Removed — per-run transcripts and the Gas City view carry the history |
 | Per-changeset details: diff, dev URL, screenshots, tests, cost | All | In progress |
 | Replayable transcript per agent | Mira | Implemented |
 | Mobile-first end-of-day digest | Theo | Planned |
@@ -192,5 +193,7 @@ Each skill carries a JSON-schema input/output definition, capability requirement
 | `mergecrew.yaml` import/export | Mira | In progress |
 | Member management & invitations | Owner/Admin | In progress |
 | Cost dashboard (per project, per agent, per provider) | Mira | In progress |
+| Gas City usage on the costs page (invocations, tokens, wall time, city estimate) | Mira | Implemented |
+| Lifecycle template → city formula, shown in the Lifecycle picker and parity-tested against the exporter | Mira | Implemented |
 | Webhooks (project events to user-supplied URL) | Mira | Planned |
 | API keys for programmatic Mergecrew access | Mira | Planned |

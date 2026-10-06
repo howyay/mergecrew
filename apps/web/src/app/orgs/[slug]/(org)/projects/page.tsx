@@ -20,6 +20,27 @@ interface ProjectHealth {
   atRiskSloNames: string[];
 }
 
+/**
+ * One row of `/v1/orgs/:slug/admin/city/projects`. `matched` is false when the
+ * city holds no rig for the project; `reason` and `fix` explain what to do.
+ */
+interface ProjectRig {
+  projectSlug: string;
+  repoFullName: string | null;
+  rig: string | null;
+  matched: boolean;
+  reason: string;
+  fix: string | null;
+}
+
+interface ProjectRigMap {
+  city: string;
+  items: ProjectRig[];
+  total: number;
+  unmatched: number;
+  complete: boolean;
+}
+
 type Project = {
   id: string;
   slug: string;
@@ -43,14 +64,19 @@ export default async function ProjectsPage({
 }) {
   const { slug } = await params;
   const session = await requireSession();
-  const [projects, health] = await Promise.all([
+  const [projects, health, rigs] = await Promise.all([
     api<{ items: Project[] }>(`/v1/orgs/${slug}/projects`, { session }),
     api<{ items: ProjectHealth[] }>(`/v1/orgs/${slug}/projects-health`, {
       session,
     }).catch(() => ({ items: [] }) as { items: ProjectHealth[] }),
+    // A city that cannot be read must not turn every project into "no rig".
+    api<ProjectRigMap>(`/v1/orgs/${slug}/admin/city/projects`, { session }).catch(
+      () => null,
+    ),
   ]);
   const items = projects.items ?? [];
   const healthBySlug = new Map(health.items.map((h) => [h.projectSlug, h]));
+  const rigBySlug = new Map((rigs?.items ?? []).map((r) => [r.projectSlug, r]));
 
   return (
     <main className="mx-auto max-w-[1280px] px-4 py-5 sm:px-9 sm:py-7">
@@ -83,6 +109,7 @@ export default async function ProjectsPage({
                 ? 'paused'
                 : 'active';
             const h = healthBySlug.get(p.slug);
+            const rig = rigBySlug.get(p.slug);
             const breachers = h?.breachingSloNames ?? [];
             const atRisks = h?.atRiskSloNames ?? [];
             const healthTooltip =
@@ -137,6 +164,24 @@ export default async function ProjectsPage({
                     {p.connectedRepo && (
                       <div className="font-mono text-[11.5px] text-muted">
                         {p.connectedRepo.repoFullName} · {p.connectedRepo.defaultBranch}
+                      </div>
+                    )}
+                    {rig && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          title={
+                            rig.fix ? `${rig.reason}. ${rig.fix}` : rig.reason
+                          }
+                        >
+                          <Chip kind={rig.matched ? 'low' : 'high'}>
+                            {rig.matched ? `rig ${rig.rig}` : 'no rig'}
+                          </Chip>
+                        </span>
+                        {!rig.matched && (
+                          <span className="text-[11.5px] leading-[1.45] text-muted">
+                            {rig.fix ?? `${rig.reason}.`}
+                          </span>
+                        )}
                       </div>
                     )}
                     <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-hair-2 pt-3 font-mono text-[11px] text-muted">

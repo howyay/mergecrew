@@ -2,6 +2,9 @@ import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import {
   STOCK_LIFECYCLE_TEMPLATES,
   findStockLifecycleTemplate,
+  formulaNameForTemplate,
+  formulaStepsForTemplate,
+  FORMULA_COMPILER_REQUIREMENT,
 } from '@mergecrew/domain';
 
 /**
@@ -17,6 +20,12 @@ import {
  * Note this is distinct from the *org-scoped* template store at
  * `v1/orgs/:slug/lifecycle-templates` (the OrgTemplateController),
  * which holds operator-customized templates persisted per org.
+ *
+ * Each template also reports the Gas City formula it exports to
+ * (`ops/gc/formula-export.mjs`, ADR-0016 step 2), so an operator can
+ * see which graph the city will run. The mapping lives in
+ * `packages/domain/src/formula.ts` and is parity-tested against the
+ * exporter.
  */
 @Controller('v1/lifecycle-templates/stock')
 export class StockTemplateController {
@@ -28,6 +37,7 @@ export class StockTemplateController {
         name: t.name,
         description: t.description,
         stack: t.stack,
+        formula: formulaNameForTemplate(t.id),
       })),
     };
   }
@@ -48,6 +58,9 @@ export class StockTemplateController {
       stack: tpl.stack,
       sourceYaml: tpl.sourceYaml,
       parsed: tpl.parsed,
+      formula: formulaNameForTemplate(tpl.id),
+      compiler: FORMULA_COMPILER_REQUIREMENT,
+      steps: formulaStepsForTemplate(tpl),
     };
   }
 }

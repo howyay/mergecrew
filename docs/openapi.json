@@ -1039,6 +1039,20 @@
         ]
       }
     },
+    "/v1/tools": {
+      "get": {
+        "operationId": "ToolsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Tools"
+        ]
+      }
+    },
     "/v1/orgs/{slug}/lifecycle-templates": {
       "get": {
         "operationId": "OrgTemplateController_list",
@@ -1581,9 +1595,9 @@
         ]
       }
     },
-    "/v1/orgs/{slug}/activity": {
+    "/v1/orgs/{slug}/ideas": {
       "get": {
-        "operationId": "ActivityController_activity",
+        "operationId": "IdeasController_list",
         "parameters": [],
         "responses": {
           "200": {
@@ -1591,7 +1605,21 @@
           }
         },
         "tags": [
-          "Activity"
+          "Ideas"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/ideas/{ideaId}/decision": {
+      "post": {
+        "operationId": "IdeasController_decide",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ideas"
         ]
       }
     },
@@ -2560,6 +2588,90 @@
         },
         "tags": [
           "Eval"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/status": {
+      "get": {
+        "operationId": "CityController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/agents": {
+      "get": {
+        "operationId": "CityController_agents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/sessions": {
+      "get": {
+        "operationId": "CityController_sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/projects": {
+      "get": {
+        "operationId": "CityController_projects",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/usage": {
+      "get": {
+        "operationId": "CityController_usage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/tenant/{orgSlug}": {
+      "get": {
+        "operationId": "CityController_tenant",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
         ]
       }
     }

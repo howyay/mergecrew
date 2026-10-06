@@ -123,7 +123,7 @@ export default async function AccountSettingsPage() {
                   <div className="font-mono text-[12px] text-muted">{session.email}</div>
                 </div>
               </div>
-              <FieldRow label="Display name" help="Visible on activity rows and run logs.">
+              <FieldRow label="Display name" help="Visible on run logs.">
                 <Input defaultValue={session.name ?? ''} placeholder="Add your name" disabled />
               </FieldRow>
               <FieldRow label="Email" help="Verified via your sign-in provider — read-only.">
@@ -225,13 +225,8 @@ export default async function AccountSettingsPage() {
           >
             <Card className="p-5">
               <p className="m-0 text-[13.5px] text-ink-2">
-                Per-user audit logs are not yet exposed. Org-wide audit lives under{' '}
-                <Link
-                  href={firstOrg ? `/orgs/${firstOrg}/activity` : '#'}
-                  className="text-accent underline-offset-[3px] hover:underline"
-                >
-                  Activity →
-                </Link>
+                Audit logs are not exposed here yet. Operational history lives on each
+                project&apos;s runs and on the Gas City view.
               </p>
             </Card>
           </Section>

@@ -117,12 +117,12 @@ export function OrgSidebar({
           count: projectCount != null ? String(projectCount) : undefined,
         },
         { label: 'Inbox', href: `${base}/inbox` },
-        { label: 'Activity', href: `${base}/activity` },
       ],
     },
     {
       label: 'Operations',
       items: [
+        { label: 'Gas City', href: `${base}/city` },
         { label: 'Metrics', href: `${base}/metrics` },
         { label: 'Costs', href: `${base}/costs` },
         { label: 'Evals', href: `${base}/evals` },
@@ -132,7 +132,7 @@ export function OrgSidebar({
       label: 'Library',
       items: [
         { label: 'Lifecycle templates', href: `${base}/lifecycle-templates` },
-        { label: 'Skill catalog', href: `${base}/skills` },
+        { label: 'Skills & tools', href: `${base}/skills` },
       ],
     },
     {

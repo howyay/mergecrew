@@ -59,6 +59,7 @@ Documentation for contributors and operators of [Mergecrew](https://github.com/m
 9. [Dry-run mode](03-infrastructure/09-dry-run.md)
 10. [Blast-radius limits](03-infrastructure/10-blast-radius.md)
 11. [Risk-score gate](03-infrastructure/11-risk-score-gate.md)
+11a. [Transcript clutter control](03-infrastructure/38-transcript-clutter.md)
 12. [Rollback model](03-infrastructure/12-rollback.md)
 13. [Spend forecast](03-infrastructure/13-spend-forecast.md)
 14. [Anomaly digest](03-infrastructure/14-anomaly-digest.md)

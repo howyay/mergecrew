@@ -78,11 +78,30 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/lifecycle-templates/:name/custom-skills/:skill` | PUT / DELETE | Upsert / remove a template custom skill. |
 | `/v1/orgs/:slug/lifecycle-templates/:name/human-gates` | PUT | Replace the template's gate policy. |
 
-## Skills (global catalog)
+## Stock lifecycle templates (global catalog)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/lifecycle-templates/stock` | GET | The stock templates a new project can start from, each with the Gas City formula it exports to. |
+| `/v1/lifecycle-templates/stock/:id` | GET | One template with `sourceYaml`, `parsed`, `formula`, the `compiler` requirement, and the formula's step chain. |
+
+## Skills and tools (global catalog)
 
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/v1/skills` | GET | Global stock-skill catalog (read-only). |
+| `/v1/tools` | GET | Per-agent-kind tool surface: the skills an agent kind actually sees after read-only filtering and wire-name sanitization. |
+
+## Gas City (admin reads)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/orgs/:slug/admin/city/status` | GET | City state; `?view=summary` keeps the fields the pages read. |
+| `/v1/orgs/:slug/admin/city/agents` | GET | Agent list. |
+| `/v1/orgs/:slug/admin/city/sessions` | GET | Session list. |
+| `/v1/orgs/:slug/admin/city/tenant/:orgSlug` | GET | The rig an organization maps to. |
+| `/v1/orgs/:slug/admin/city/projects` | GET | Every project bound to its rig, with a reason and a fix for the unmapped ones. |
+| `/v1/orgs/:slug/admin/city/usage` | GET | Today's invocations, tokens and wall time with the city's own cost estimate, labelled as an estimate. |
 
 ## Runs
 
@@ -95,7 +114,6 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/projects/:projectSlug/runs/:runId/cancel` | POST | Cancel. |
 | `/v1/orgs/:slug/projects/:projectSlug/runs/:runId/timeline` | GET | Paged timeline (replay). |
 | `/v1/orgs/:slug/projects/:projectSlug/runs/:runId/timeline/stream` | GET (SSE) | Live timeline stream. |
-| `/v1/orgs/:slug/activity` | GET | Org-wide activity feed (cross-project). |
 
 ### SSE timeline stream
 
@@ -142,7 +160,29 @@ Reconnect protocol: client sends `Last-Event-ID` (the largest event id received)
 | `/v1/orgs/:slug/inbox` | GET | Pending approvals + flagged changesets across all projects. |
 | `/v1/orgs/:slug/projects/:projectSlug/approvals` | GET | Pending approvals for a project. |
 | `/v1/orgs/:slug/projects/:projectSlug/approvals/:approvalId/resolve` | POST | Approve / reject / takeover. |
-| `/v1/orgs/:slug/projects/:projectSlug/intent-inbox` | GET / POST | List / submit intents. |
+| `/v1/orgs/:slug/projects/:projectSlug/intent-inbox` | GET / POST | List / submit intents. Submitting with `decision: "approve"` records the operator's approval in the same action. |
+| `/v1/orgs/:slug/ideas` | GET | Ideas waiting for a human decision, oldest first. |
+| `/v1/orgs/:slug/ideas/:ideaId/decision` | POST | Approve / reject an idea. Only an approved idea can seed a run. |
+
+### Ideas and the human gate
+
+An idea (`intent_inbox_items`) is a proposal: a sentence someone typed, a Sentry
+issue, a bug-triage finding. It carries one of four statuses.
+
+| Status | Meaning |
+|---|---|
+| `queued` | Waiting for a person. Nothing runs from it. |
+| `approved` | A person approved it; the next run may pick it up. |
+| `rejected` | A person rejected it. It is never picked up. |
+| `picked_up` | A run consumed it (`pickedUpRunId` points at the run). |
+
+Only `approved` is visible to the pickup path in `apps/runner/src/step.ts`, and
+only `queued` can be decided, so a decision cannot be applied twice. Machine
+sources (the Sentry webhook, bug triage) always write `queued`; flows where the
+person makes the choice themselves — the onboarding first task, the discovery
+direction picker — submit `decision: "approve"` and land `approved` directly.
+The rule lives in `packages/domain/src/ideas.ts`; every decision is recorded in
+the org audit log as `idea.approved` / `idea.rejected`.
 
 ## LLM configuration
 

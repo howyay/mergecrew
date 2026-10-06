@@ -44,3 +44,7 @@ ops/pipeline/forgejo.env
 ops/pipeline/*.env
 ops/ideation/specs/
 ops/pipeline/deliver/
+# Polecat session artifacts
+.beads/
+.runtime/
+CLAUDE.md

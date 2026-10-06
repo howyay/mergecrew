@@ -43,6 +43,9 @@ export function runbookLinkFor(event: MinimalEv): RunbookLink | null {
     if (reason === 'gated_reject') {
       return { href: anchor('gated-reject'), label: 'What does this mean?' };
     }
+    if (reason === 'tool_call_repeat_detected') {
+      return { href: anchor('tool-call-repeat'), label: 'What does this mean?' };
+    }
   }
 
   // Surfaced from the deploy adapter's awaitCompletion via the runner's

@@ -10,7 +10,6 @@ import { LifecycleModule } from './modules/lifecycle/lifecycle.module.js';
 import { RunModule } from './modules/run/run.module.js';
 import { ChangesetModule } from './modules/changeset/changeset.module.js';
 import { ApprovalModule } from './modules/approval/approval.module.js';
-import { TimelineModule } from './modules/timeline/timeline.module.js';
 import { CostModule } from './modules/cost/cost.module.js';
 import { MetricsModule } from './modules/metrics/metrics.module.js';
 import { SloModule } from './modules/slo/slo.module.js';
@@ -26,6 +25,7 @@ import { OutboundWebhookModule } from './modules/outbound-webhook/outbound-webho
 import { MagicLinkModule } from './modules/magic-link/magic-link.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { EvalModule } from './modules/eval/eval.module.js';
+import { CityModule } from './modules/city/city.module.js';
 
 @Module({
   imports: [
@@ -39,7 +39,6 @@ import { EvalModule } from './modules/eval/eval.module.js';
     RunModule,
     ChangesetModule,
     ApprovalModule,
-    TimelineModule,
     CostModule,
     MetricsModule,
     SloModule,
@@ -55,6 +54,7 @@ import { EvalModule } from './modules/eval/eval.module.js';
     MagicLinkModule,
     HealthModule,
     EvalModule,
+    CityModule,
   ],
 })
 export class AppModule implements NestModule {
