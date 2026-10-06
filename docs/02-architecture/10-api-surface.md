@@ -94,6 +94,7 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/admin/city/sessions` | GET | Session list. |
 | `/v1/orgs/:slug/admin/city/tenant/:orgSlug` | GET | The rig an organization maps to. |
 | `/v1/orgs/:slug/admin/city/projects` | GET | Every project bound to its rig, with a reason and a fix for the unmapped ones. |
+| `/v1/orgs/:slug/admin/city/usage` | GET | Today's invocations, tokens and wall time with the city's own cost estimate, labelled as an estimate. |
 
 ## Runs
 

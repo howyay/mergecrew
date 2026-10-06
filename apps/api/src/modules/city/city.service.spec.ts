@@ -1,7 +1,9 @@
 import {
   CITY_STATUS_SUMMARY_FIELDS,
   CityService,
+  EMPTY_CITY_USAGE,
   projectStatus,
+  projectUsage,
   rigNameForOrg,
   rigRows,
   rigsFromAgents,
@@ -374,5 +376,124 @@ describe('CityController project rigs', () => {
 
     await expect(controller.projects()).resolves.toMatchObject({ city: 'gascity' });
     expect(seen).toEqual(['org-1']);
+  });
+});
+
+describe('projectUsage', () => {
+  // The shape the supervisor answered on 2026-10-05: 45 invocations, none of
+  // them priced, so the estimate is 0 for a reason.
+  const live = {
+    available: true,
+    recording: true,
+    source: 'local_estimate',
+    today: {
+      invocations: 45,
+      compute_facts: 22,
+      input_tokens: 1_500_725,
+      output_tokens: 10_223,
+      cache_read_tokens: 1_336_832,
+      cache_creation_tokens: 0,
+      wall_seconds: 6_355.41,
+      cost_usd_estimate: 0,
+      unpriced: 45,
+    },
+    recent: { invocations: 0, wall_seconds: 0, cost_usd_estimate: 0, unpriced: 0 },
+    recent_window_secs: 300,
+    observed_from: '2026-10-05T01:53:17.391Z',
+    updated_at: '2026-10-05T23:53:50.133257401Z',
+  };
+
+  it('carries the counters through and flags a partial estimate', () => {
+    const usage = projectUsage(live);
+
+    expect(usage.today).toEqual({
+      invocations: 45,
+      compute_facts: 22,
+      input_tokens: 1_500_725,
+      output_tokens: 10_223,
+      cache_read_tokens: 1_336_832,
+      cache_creation_tokens: 0,
+      wall_seconds: 6_355.41,
+      cost_usd_estimate: 0,
+      unpriced: 45,
+    });
+    expect(usage).toMatchObject({
+      available: true,
+      recording: true,
+      source: 'local_estimate',
+      recent_window_secs: 300,
+      partial: true,
+    });
+    expect(usage.observed_from).toBe('2026-10-05T01:53:17.391Z');
+  });
+
+  it('is not partial when every invocation has a price', () => {
+    const usage = projectUsage({ ...live, today: { ...live.today, unpriced: 0 } });
+    expect(usage.partial).toBe(false);
+  });
+
+  it('turns a payload the supervisor could not fill in into zeros', () => {
+    const usage = projectUsage({ available: false, recording: false });
+
+    expect(usage).toMatchObject({ available: false, recording: false, source: 'unknown', partial: false });
+    expect(usage.today.invocations).toBe(0);
+    expect(usage.recent.wall_seconds).toBe(0);
+    expect(usage.observed_from).toBeNull();
+    expect(usage.updated_at).toBeNull();
+  });
+
+  it('ignores a malformed counter instead of rendering NaN', () => {
+    const usage = projectUsage({ available: true, today: { invocations: 'lots', wall_seconds: null } });
+    expect(usage.today.invocations).toBe(0);
+    expect(usage.today.wall_seconds).toBe(0);
+  });
+
+  it('answers with the empty projection when there is nothing at all', () => {
+    expect(projectUsage(undefined)).toEqual(EMPTY_CITY_USAGE);
+  });
+});
+
+describe('CityService usage', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('reads the usage resource and normalizes it', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        available: true,
+        recording: true,
+        source: 'local_estimate',
+        today: { invocations: 2, unpriced: 2 },
+      }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const usage = await new CityService().usage();
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v0/city/gascity/usage');
+    expect(usage.today.invocations).toBe(2);
+    expect(usage.partial).toBe(true);
+  });
+
+  it('surfaces an unreachable supervisor instead of reporting zero usage', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 502 }) as unknown as typeof fetch;
+
+    await expect(new CityService().usage()).rejects.toThrow(/not reachable/);
+  });
+});
+
+describe('CityController usage', () => {
+  it('answers with what the service reports', async () => {
+    const city = {
+      usage: async () => ({ ...EMPTY_CITY_USAGE, available: true, recording: true }),
+    } as unknown as CityService;
+
+    const controller = new CityController(city, {} as unknown as TenantContextService);
+
+    await expect(controller.usage()).resolves.toMatchObject({ available: true, recording: true });
   });
 });
