@@ -1623,34 +1623,6 @@
         ]
       }
     },
-    "/v1/orgs/{slug}/ideas": {
-      "get": {
-        "operationId": "IdeasController_list",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ideas"
-        ]
-      }
-    },
-    "/v1/orgs/{slug}/ideas/{ideaId}/decision": {
-      "post": {
-        "operationId": "IdeasController_decide",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ideas"
-        ]
-      }
-    },
     "/v1/orgs/{slug}/costs": {
       "get": {
         "operationId": "CostController_orgCosts",
