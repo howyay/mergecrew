@@ -193,5 +193,6 @@ Each skill carries a JSON-schema input/output definition, capability requirement
 | `mergecrew.yaml` import/export | Mira | In progress |
 | Member management & invitations | Owner/Admin | In progress |
 | Cost dashboard (per project, per agent, per provider) | Mira | In progress |
+| Gas City usage on the costs page (invocations, tokens, wall time, city estimate) | Mira | Implemented |
 | Webhooks (project events to user-supplied URL) | Mira | Planned |
 | API keys for programmatic Mergecrew access | Mira | Planned |

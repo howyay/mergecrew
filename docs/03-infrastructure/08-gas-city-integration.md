@@ -30,8 +30,9 @@ The supervisor serves a read-only JSON API. Use it for reads. Do not shell out f
 | `GET /v0/city/<city>/sessions` | session list | `{items, total}` |
 | `GET /v0/city/<city>/usage` | token and cost record | `{available, recording, source, today, recent, recent_window_secs, observed_from, updated_at}` |
 
-`today` holds `invocations`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
-`cache_creation_tokens`, `wall_seconds`, and `cost_usd_estimate`.
+`today` holds `invocations`, `compute_facts`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
+`cache_creation_tokens`, `wall_seconds`, `cost_usd_estimate`, and `unpriced` — the number of
+invocations with no price on file.
 
 A list call returns an envelope. Always read `items`. Some CLI calls return a bare array, so the
 shared helper `items()` in `ops/gc/city-client.mjs` accepts both.
@@ -83,6 +84,28 @@ The API module `apps/api/src/modules/city` exposes the reads. It reuses `RoleGua
 | `GET /v1/orgs/:slug/admin/city/sessions` | session list |
 | `GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` | the rig for an organization |
 | `GET /v1/orgs/:slug/admin/city/projects` | every project of the organization bound to a rig, with a reason and a fix for the unmapped ones |
+| `GET /v1/orgs/:slug/admin/city/usage` | today's invocations, tokens and wall time, with the city's own cost estimate |
+
+### Cost and usage
+
+The city counts tokens, wall time and invocations on the host it runs on. That makes its numbers a
+**local estimate, not a provider bill**, and the product says so instead of presenting them as spend.
+`CityService.usage()` reads `GET /v0/city/<city>/usage` and normalizes it through `projectUsage()`:
+
+| Field | Rule |
+| - | - |
+| `source` | the city's own label, `local_estimate` on the reference city; anything non-string becomes `unknown` |
+| `unpriced` | invocations the city could not price |
+| `partial` | derived here as `unpriced > 0`: the estimate is a floor, not a total |
+| counters | coerced through a finite-number guard, so a missing or malformed counter reads as `0` rather than `NaN` |
+| `available` / `recording` | strict `=== true`, so an absent flag is never read as healthy |
+| missing payload | `EMPTY_CITY_USAGE` — zeros, `source: unknown`, no timestamp |
+
+The costs page shows two sources side by side and keeps them apart: the per-day ledger from the
+application database (`/v1/orgs/:slug/costs`, written by the runner) and the city panel. A failed city
+read never blanks the ledger: `403` reads as "needs the admin role", any other failure renders a note
+and leaves the ledger rows in place. A zero estimate with `partial` set is reported as "none of the N
+invocations has a price on file, not because nothing was spent".
 
 ### Project to rig binding
 
