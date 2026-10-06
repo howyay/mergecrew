@@ -765,6 +765,18 @@ and asserts that the Activity surface stays deleted. Point it at any stack with
 `demo`). Routes the credential is not allowed to read come back as `info`
 instead of `fail`, so a green run never overstates what could be seen.
 
+### The city is host-only, so the containerised API reads nothing from it
+
+`gc supervisor run` binds `127.0.0.1:8372` on the host and has no flag to change
+that. The API container therefore reaches its own loopback, every city read fails
+with `Gas City is not reachable at http://127.0.0.1:8372`, and the Gas City page
+shows exactly that. The costs page is built for it: the ledger renders, the usage
+panel says it could not be read, and no number is invented from the gap. To fill
+the city surfaces in, give the API a route the container can actually use —
+`CITY_API_URL` pointing at an address the supervisor listens on — and no code
+change is needed. `scripts/e2e-surfaces.mjs` reports that read as `info`, not
+`fail`: it is this deployment's shape, not a defect in the route.
+
 ### The bridge network on this host has no way out
 
 Rootless podman on this machine builds container networks that can neither

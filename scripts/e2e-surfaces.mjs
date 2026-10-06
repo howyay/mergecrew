@@ -180,8 +180,8 @@ async function main() {
       check(
         'costs',
         'city usage carries today counters',
-        ['invocations', 'wall_seconds', 'tokens_in', 'tokens_out', 'unpriced'].every((k) => typeof today[k] === 'number'),
-        `invocations=${today.invocations} wall=${today.wall_seconds}s tokens=${today.tokens_in}/${today.tokens_out} unpriced=${today.unpriced} partial=${u.partial}`,
+        ['invocations', 'wall_seconds', 'input_tokens', 'output_tokens', 'unpriced'].every((k) => typeof today[k] === 'number'),
+        `invocations=${today.invocations} wall=${today.wall_seconds}s tokens=${today.input_tokens}/${today.output_tokens} unpriced=${today.unpriced} partial=${u.partial}`,
       );
       check(
         'costs',
@@ -192,8 +192,17 @@ async function main() {
     } else {
       info('costs', 'city usage available', `available=false — ${u?.error ?? 'no detail'}`);
     }
+  } else if (usage.status === 403) {
+    info('costs', 'GET city usage', `HTTP 403 for this credential — ${apiMessage(usage.json)}`);
+  } else if (/not reachable/i.test(apiMessage(usage.json))) {
+    // Not a code failure: this is the deployment shape. `gc supervisor run`
+    // binds 127.0.0.1 on the host (it has no bind flag), so a containerised API
+    // reaches only its own loopback unless CITY_API_URL points at an address the
+    // container can route to. The page degrades to its "could not be read"
+    // note and the ledger stands alone, which is what the checks above prove.
+    info('costs', 'GET city usage', `HTTP ${usage.status}, supervisor unreachable from this container — set CITY_API_URL to an address the API container can reach`);
   } else {
-    info('costs', 'GET city usage', `HTTP ${usage.status} for this credential — ${apiMessage(usage.json)}`);
+    info('costs', 'GET city usage', `HTTP ${usage.status} — ${apiMessage(usage.json)}`);
   }
   const costsPage = await webGet(`/orgs/${ORG}/costs`);
   if (costsPage.status === 200) {
