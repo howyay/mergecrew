@@ -11,6 +11,7 @@ import {
   clampBudgetForRun,
   computeRiskScore,
   parsePackageJsonDiff,
+  PICKABLE_IDEA_STATUS,
   resolveAgentByRef,
   type AgentDefinition,
   type AutoPromoteRule as AutoPromoteRuleType,
@@ -1358,7 +1359,9 @@ export async function runStep(args: StepArgs): Promise<StepOutcome> {
   // report, create one intent_inbox_item per intent (with a
   // sourceKey of `bug-triage:<fingerprint>` for cross-run dedup),
   // persist the report on agent_steps.output, and emit
-  // BUG_TRIAGE_REPORT. Same defensive default as the other
+  // BUG_TRIAGE_REPORT. The rows land `queued`: a triage finding is a
+  // proposal, so a person approves it in the idea queue before any run
+  // picks it up. Same defensive default as the other
   // observation-stage post-processes: parser failure → zero-intent
   // report so a malformed agent reply doesn't silently dead-end.
   if (
@@ -2450,17 +2453,19 @@ async function synthesizeAgentInput(
   _cfg: MergecrewConfig,
 ): Promise<unknown> {
   // Discovery mode for the planner (#492). When a project has no
-  // queued intent AND no prior changesets, there is no concrete task
+  // APPROVED intent AND no prior changesets, there is no concrete task
   // to plan against — the default planner prompt would degenerate to
   // "please give me instructions." Instead we set a `mode: 'discovery'`
   // flag and the runner (caller below) swaps in
   // PLANNER_DISCOVERY_SYSTEM_PROMPT so the planner explores the repo
   // and proposes three candidate first runs. The orchestrator routes
   // on `output.mode === 'discovery'` to terminate the chain.
+  // An intent still waiting for a human decision does not count here:
+  // the gate is what turns an idea into workable input.
   if (agentDef.kind === PLANNER_AGENT_KIND) {
     const [queuedIntents, priorChangesets] = await Promise.all([
       withTenant(organizationId, (tx) =>
-        tx.intentInboxItem.count({ where: { projectId, status: 'queued' } }),
+        tx.intentInboxItem.count({ where: { projectId, status: PICKABLE_IDEA_STATUS } }),
       ),
       withTenant(organizationId, (tx) => tx.changeset.count({ where: { projectId } })),
     ]);
@@ -2603,7 +2608,7 @@ async function synthesizeAgentInput(
   if (agentRef === 'discovery') {
     const intents = await withTenant(organizationId, (tx) =>
       tx.intentInboxItem.findMany({
-        where: { projectId, status: 'queued' },
+        where: { projectId, status: PICKABLE_IDEA_STATUS },
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
@@ -2843,16 +2848,17 @@ async function synthesizeAgentInput(
     };
   }
 
-  // PM agent input (#517, V2.af roster). Consumes the oldest queued
+  // PM agent input (#517, V2.af roster). Consumes the oldest approved
   // intent and scopes it into a spec the engineer agents read. Mirrors
   // the planner-seed-goal path (#493) below — the two are mutually
   // exclusive in practice because a project runs ONE graph profile at
-  // a time. The intent is flipped `queued → picked_up` atomically so a
-  // parallel/retry run doesn't re-consume it.
+  // a time. The intent is flipped `approved → picked_up` atomically so a
+  // parallel/retry run doesn't re-consume it. An intent that no human
+  // has approved is never visible here: that is the gate.
   if (agentDef.kind === PM_AGENT_KIND) {
     const intent = await withTenant(organizationId, (tx) =>
       tx.intentInboxItem.findFirst({
-        where: { projectId, status: 'queued' },
+        where: { projectId, status: PICKABLE_IDEA_STATUS },
         orderBy: { createdAt: 'asc' },
       }),
     );
@@ -2889,17 +2895,20 @@ async function synthesizeAgentInput(
   }
 
   // Planner seed goal (#493). When the onboarding wizard captured a
-  // first-task description, it persists as a queued IntentInboxItem.
-  // The planner consumes the oldest queued intent on its next run and
-  // plans against the goal text instead of asking the LLM "what would
-  // you like me to do?". The intent is flipped to `picked_up` with
-  // `pickedUpRunId = runId` atomically so a parallel/retry run doesn't
-  // re-consume the same goal. Other agentRefs (discovery, pm,
-  // engineers) keep their own paths.
+  // first-task description, it persists as an IntentInboxItem that the
+  // wizard already approved (the operator typed it and clicked run), so
+  // it is `approved` from the start. The planner consumes the oldest
+  // approved intent on its next run and plans against the goal text
+  // instead of asking the LLM "what would you like me to do?". The
+  // intent is flipped to `picked_up` with `pickedUpRunId = runId`
+  // atomically so a parallel/retry run doesn't re-consume the same goal.
+  // Other agentRefs (discovery, pm, engineers) keep their own paths.
+  // Intents filed by a machine (Sentry, bug triage) stay `queued` until
+  // a person approves them in the inbox.
   if (agentDef.kind === PLANNER_AGENT_KIND) {
     const intent = await withTenant(organizationId, (tx) =>
       tx.intentInboxItem.findFirst({
-        where: { projectId, status: 'queued' },
+        where: { projectId, status: PICKABLE_IDEA_STATUS },
         orderBy: { createdAt: 'asc' },
       }),
     );

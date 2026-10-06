@@ -130,13 +130,17 @@ async function createFirstProjectAction(formData: FormData) {
 }
 
 // Seed-goal capture (#493). Final wizard step: short free-form
-// description of what mergecrew should work on first. Persisted as a
-// queued IntentInboxItem so the planner picks it up on the next run
+// description of what mergecrew should work on first. Persisted as an
+// IntentInboxItem the operator already approved — they typed the goal
+// and clicked run in the same action, so it is written `approved` and
+// the planner picks it up on the next run
 // (see `synthesizeAgentInput` in apps/runner/src/step.ts) and produces
 // a real plan instead of asking the LLM "what would you like me to
-// do?". A "Save and run" click also fires the manual run so the
-// operator sees output immediately; we redirect to the run-detail
-// page so the timeline streams in front of them.
+// do?". An idea nobody approved (a Sentry issue, a triage finding) is
+// written `queued` instead and waits in the inbox. A "Save and run"
+// click also fires the manual run so the operator sees output
+// immediately; we redirect to the run-detail page so the timeline
+// streams in front of them.
 async function createSeedGoalAndRunAction(formData: FormData) {
   'use server';
   const slug = String(formData.get('orgSlug') ?? '');
@@ -146,7 +150,7 @@ async function createSeedGoalAndRunAction(formData: FormData) {
   const session = await requireSession();
   await api(`/v1/orgs/${slug}/projects/${projectSlug}/intent-inbox`, {
     method: 'POST',
-    body: JSON.stringify({ body: goal }),
+    body: JSON.stringify({ body: goal, decision: 'approve' }),
     session,
   }).catch(() => undefined);
   const r = await api<{ runId: string }>(

@@ -152,7 +152,29 @@ Reconnect protocol: client sends `Last-Event-ID` (the largest event id received)
 | `/v1/orgs/:slug/inbox` | GET | Pending approvals + flagged changesets across all projects. |
 | `/v1/orgs/:slug/projects/:projectSlug/approvals` | GET | Pending approvals for a project. |
 | `/v1/orgs/:slug/projects/:projectSlug/approvals/:approvalId/resolve` | POST | Approve / reject / takeover. |
-| `/v1/orgs/:slug/projects/:projectSlug/intent-inbox` | GET / POST | List / submit intents. |
+| `/v1/orgs/:slug/projects/:projectSlug/intent-inbox` | GET / POST | List / submit intents. Submitting with `decision: "approve"` records the operator's approval in the same action. |
+| `/v1/orgs/:slug/ideas` | GET | Ideas waiting for a human decision, oldest first. |
+| `/v1/orgs/:slug/ideas/:ideaId/decision` | POST | Approve / reject an idea. Only an approved idea can seed a run. |
+
+### Ideas and the human gate
+
+An idea (`intent_inbox_items`) is a proposal: a sentence someone typed, a Sentry
+issue, a bug-triage finding. It carries one of four statuses.
+
+| Status | Meaning |
+|---|---|
+| `queued` | Waiting for a person. Nothing runs from it. |
+| `approved` | A person approved it; the next run may pick it up. |
+| `rejected` | A person rejected it. It is never picked up. |
+| `picked_up` | A run consumed it (`pickedUpRunId` points at the run). |
+
+Only `approved` is visible to the pickup path in `apps/runner/src/step.ts`, and
+only `queued` can be decided, so a decision cannot be applied twice. Machine
+sources (the Sentry webhook, bug triage) always write `queued`; flows where the
+person makes the choice themselves — the onboarding first task, the discovery
+direction picker — submit `decision: "approve"` and land `approved` directly.
+The rule lives in `packages/domain/src/ideas.ts`; every decision is recorded in
+the org audit log as `idea.approved` / `idea.rejected`.
 
 ## LLM configuration
 

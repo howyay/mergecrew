@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card, Button, PageHead, Label } from '@/components/ui';
+import { Card, Button, Chip, PageHead, Label } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 
 interface InboxItem {
@@ -11,6 +11,22 @@ interface InboxItem {
   changesetId: string | null;
   projectId: string;
   projectSlug: string | null;
+  createdAt: string;
+}
+
+/**
+ * An idea is a proposal — a sentence, a Sentry issue, a triage finding. It
+ * waits here until a person approves it, and only an approved idea can seed a
+ * run, so this list is the gate between "someone suggested it" and "the city
+ * worked on it".
+ */
+interface IdeaItem {
+  id: string;
+  body: string;
+  status: string;
+  sourceKey: string | null;
+  projectSlug: string | null;
+  projectName: string | null;
   createdAt: string;
 }
 
@@ -40,8 +56,16 @@ export default async function InboxPage({
 }) {
   const { slug } = await params;
   const session = await requireSession();
-  const inbox = await api<{ items: InboxItem[] }>(`/v1/orgs/${slug}/inbox`, { session });
+  // Both queues are read in parallel. The idea queue is allowed to fail on its
+  // own: an idea read that breaks must not take the approval inbox down with it,
+  // because the approvals are what stop a run from shipping.
+  const [inbox, ideasRes] = await Promise.all([
+    api<{ items: InboxItem[] }>(`/v1/orgs/${slug}/inbox`, { session }),
+    api<{ items: IdeaItem[] }>(`/v1/orgs/${slug}/ideas`, { session }).catch(() => null),
+  ]);
   const items = inbox.items ?? [];
+  const ideas = ideasRes?.items ?? [];
+  const ideasFailed = ideasRes === null;
 
   const counts = items.reduce(
     (acc, a) => {
@@ -62,10 +86,64 @@ export default async function InboxPage({
         title="Inbox"
         meta={
           <span className="font-mono text-[12.5px] text-muted">
-            {items.length} pending · anything that trips a guardrail lands here
+            {items.length} pending · {ideas.length} {ideas.length === 1 ? 'idea' : 'ideas'} awaiting a
+            decision
           </span>
         }
       />
+
+      <section className="mb-8">
+        <div className="mb-3 flex items-baseline gap-3">
+          <Label energy>Ideas</Label>
+          <h2 className="m-0 text-[14px] font-medium tracking-[-0.005em]">
+            Waiting for a decision
+          </h2>
+          {!ideasFailed && ideas.length > 0 && <Chip kind="high">{ideas.length}</Chip>}
+        </div>
+        {ideasFailed ? (
+          <Card className="p-5">
+            <p className="m-0 text-[13.5px] text-muted">
+              The idea queue could not be read, so nothing is shown here. The approvals below are
+              unaffected. Reload to try again.
+            </p>
+          </Card>
+        ) : ideas.length === 0 ? (
+          <Card className="p-5">
+            <p className="m-0 text-[13.5px] text-muted">
+              No idea is waiting. A Sentry issue, a bug-triage finding or a suspicion someone typed
+              lands here and stays put until a person approves it — nothing runs from an idea on its
+              own.
+            </p>
+          </Card>
+        ) : (
+          <ul className="m-0 space-y-3 list-none p-0">
+            {ideas.map((idea) => (
+              <li key={idea.id}>
+                <Card>
+                  <div className="grid grid-cols-[1fr_auto] gap-4 px-5 py-5">
+                    <div className="min-w-0">
+                      <p className="m-0 whitespace-pre-wrap text-[13.5px] leading-[1.55] text-ink">
+                        {idea.body}
+                      </p>
+                      <div className="mt-3 font-mono text-[11.5px] text-muted">
+                        {idea.projectSlug ? `${idea.projectSlug} · ` : ''}
+                        {idea.sourceKey ? `${idea.sourceKey} · ` : ''}filed{' '}
+                        {relativeTime(idea.createdAt)}
+                      </div>
+                    </div>
+                    <IdeaDecisionForm slug={slug} ideaId={idea.id} />
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mb-3 flex items-baseline gap-3">
+        <Label>Changesets</Label>
+        <h2 className="m-0 text-[14px] font-medium tracking-[-0.005em]">Waiting for a decision</h2>
+      </section>
 
       <section className="mb-6 grid grid-cols-3 gap-3">
         <div className="border border-hair bg-paper px-[18px] py-[14px]">
@@ -199,6 +277,45 @@ function RiskScoreItem({ item, slug }: { item: InboxItem; slug: string }) {
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+async function decideIdeaAction(formData: FormData) {
+  'use server';
+  const slug = String(formData.get('slug') ?? '');
+  const ideaId = String(formData.get('ideaId') ?? '');
+  const decision = String(formData.get('decision') ?? 'approve');
+  const session = await requireSession();
+  await api(`/v1/orgs/${slug}/ideas/${ideaId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+    session,
+  });
+}
+
+function IdeaDecisionForm({ slug, ideaId }: { slug: string; ideaId: string }) {
+  return (
+    <div className="flex shrink-0 flex-col gap-2">
+      <form action={decideIdeaAction}>
+        <input type="hidden" name="slug" value={slug} />
+        <input type="hidden" name="ideaId" value={ideaId} />
+        <input type="hidden" name="decision" value="approve" />
+        <Button variant="energy" size="sm" className="w-full">
+          Approve
+        </Button>
+      </form>
+      <form action={decideIdeaAction}>
+        <input type="hidden" name="slug" value={slug} />
+        <input type="hidden" name="ideaId" value={ideaId} />
+        <input type="hidden" name="decision" value="reject" />
+        <Button variant="danger" size="sm" className="w-full">
+          Reject
+        </Button>
+      </form>
+      <span className="text-center font-mono text-[10.5px] leading-[1.4] text-muted">
+        approving lets the next run pick it up
+      </span>
     </div>
   );
 }
