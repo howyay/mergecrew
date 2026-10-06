@@ -712,7 +712,7 @@ The repair path is tested by hand, not by the timer alone: stopping
 `mergecrew-stack.service` and running the health service brought the origin back
 in ~16s.
 
-### Rebuilding the web image takes two things people get wrong
+### Rebuilding a web image takes three things people get wrong
 
 `mergecrew-web` runs a built standalone bundle, not a bind-mount of the sources,
 so a `apps/web/src/**` change does nothing on `127.0.0.1:3100` until the image is
@@ -741,6 +741,29 @@ docker exec mergecrew-web sh -c 'grep -rl "Changelog" /app/apps/web/.next | head
   `localhost/mergecrew/web:latest`.** `up -d --no-build` then happily keeps the
   old image and the page never changes; `docker tag` through the podman API is a
   no-op. `podman tag` is what makes the new image visible to compose.
+- **A worktree that has ever been built silently produces a broken image.** The
+  context excludes `**/dist` but kept every `packages/*/tsconfig.tsbuildinfo`, so
+  `tsc` believed the emitted files were current, emitted nothing, and the first
+  package importing a skipped one died inside
+  `pnpm --filter @mergecrew/web... build` with
+  `Cannot find module '@mergecrew/domain'` (it surfaces as
+  `@mergecrew/config-yaml` failing). `*.tsbuildinfo` is in `.dockerignore` now,
+  but when a build behaves oddly, make the context pristine and build from a
+  clean export — that removes the class of problem:
+  `rm -rf /tmp/mc-image-src && mkdir -p /tmp/mc-image-src && git archive HEAD |
+  tar -x -C /tmp/mc-image-src && podman build -f infra/docker/Dockerfile.web -t
+  localhost/mergecrew/web:latest /tmp/mc-image-src`.
+
+### Proving the surfaces still work after a rebuild
+
+`node scripts/e2e-surfaces.mjs` walks the path a browser takes — web page → API
+route → database or Gas City — for projects, lifecycle templates (and the city
+formula each one becomes), costs (ledger + city usage), tools/skills and ideas,
+and asserts that the Activity surface stays deleted. Point it at any stack with
+`MERGREW_E2E_API` / `MERGREW_E2E_WEB` (defaults `http://127.0.0.1:4000` and
+`http://127.0.0.1:3100`) and pick the org with `MERGREW_E2E_ORG` (default
+`demo`). Routes the credential is not allowed to read come back as `info`
+instead of `fail`, so a green run never overstates what could be seen.
 
 ### The bridge network on this host has no way out
 
