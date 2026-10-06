@@ -158,14 +158,14 @@ async function main() {
   // them and the nav fell back to bare squares. Checking the rendered class
   // names is what makes that regression loud instead of cosmetic.
   // ("Building2" kebab-cases to `building2`, so it is matched by prefix.)
+  // A parked entry takes its glyph off this list: Metrics (`chart-line`) and
+  // Evals (`flask-conical`) left the nav until each has something to show.
   const EXPECTED_ICONS = [
     'layout-dashboard',
     'folder-kanban',
     'lightbulb',
     'inbox',
-    'chart-line',
     'wallet',
-    'flask-conical',
     'workflow',
     'sparkles',
     'settings',
