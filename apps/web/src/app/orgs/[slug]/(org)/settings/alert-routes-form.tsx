@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Card } from '@/components/ui';
+import { Card, DataTable, TD, TH, THead, TR } from '@/components/ui';
 import { setAlertRouteAction, type AlertRoutesResponse } from './alert-routes-actions';
 
 type Row = AlertRoutesResponse['items'][number];
@@ -45,18 +45,16 @@ export function AlertRoutesForm({
 
   return (
     <div className="space-y-3">
-      <Card className="p-0 overflow-x-auto">
-        <table className="w-full text-[13px]">
-          <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
-            <tr className="border-b border-ink">
-              <th className="px-4 py-2 font-medium">Event</th>
+      <Card className="p-0">
+        <DataTable>
+          <THead>
+            <TR>
+              <TH>Event</TH>
               {CHANNELS.map((c) => (
-                <th key={c.id} className="px-4 py-2 font-medium">
-                  {c.label}
-                </th>
+                <TH key={c.id}>{c.label}</TH>
               ))}
-            </tr>
-          </thead>
+            </TR>
+          </THead>
           <tbody>
             {rows.map((row) => (
               <RouteRow
@@ -73,7 +71,7 @@ export function AlertRoutesForm({
               />
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </Card>
       <p className="m-0 text-[12px] text-muted">
         Changes apply on the next event — no restart needed. Rows still on the
@@ -119,8 +117,8 @@ function RouteRow({
   };
 
   return (
-    <tr className="border-b border-hair-2 last:border-b-0">
-      <td className="px-4 py-2">
+    <TR>
+      <TD>
         <div className="flex items-center gap-2">
           <span className="font-medium">{meta?.label}</span>
           {row.isDefault && (
@@ -130,7 +128,7 @@ function RouteRow({
           )}
         </div>
         <div className="font-mono text-[11px] text-muted">{meta?.help}</div>
-      </td>
+      </TD>
       {CHANNELS.map((c) => {
         const disabledReason =
           c.id === 'slack' && !slackConfigured
@@ -138,7 +136,7 @@ function RouteRow({
             : null;
         const checked = row.channels.includes(c.id);
         return (
-          <td key={c.id} className="px-4 py-2">
+          <TD key={c.id}>
             <label
               title={disabledReason ?? undefined}
               className={
@@ -156,9 +154,9 @@ function RouteRow({
                 {checked ? 'on' : 'off'}
               </span>
             </label>
-          </td>
+          </TD>
         );
       })}
-    </tr>
+    </TR>
   );
 }

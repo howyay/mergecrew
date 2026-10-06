@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily browser scan of the mergecrew operator pages
+# No Requires=/BindsTo= on mergecrew-stack.service for the same reason as the
+# stack-health timer: a guard that the guarded unit can stop is not a guard.
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=10min
+AccuracySec=1min
+Unit=mergecrew-uiscan.service
+
+[Install]
+WantedBy=timers.target

@@ -2,7 +2,20 @@ import type { ReactNode } from 'react';
 import { ApiError, api, type Session } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import { requireSession } from '@/lib/session';
-import { Card, CardBody, CardHead, Chip, PageHead, StatBadge, StatusDot } from '@/components/ui';
+import {
+  Card,
+  CardBody,
+  CardHead,
+  Chip,
+  DataTable,
+  PageHead,
+  StatBadge,
+  StatusDot,
+  TD,
+  TH,
+  THead,
+  TR,
+} from '@/components/ui';
 
 /**
  * Gas City state for one organization. Reads the admin city endpoints added in
@@ -311,49 +324,45 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
                 </p>
               </CardBody>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
-                    <tr className="border-b border-ink">
-                      <th className="px-4 py-2 font-medium">Project</th>
-                      <th className="px-4 py-2 font-medium">Repository</th>
-                      <th className="px-4 py-2 font-medium">Rig</th>
-                      <th className="px-4 py-2 font-medium">Match</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectRigItems.map((item) => (
-                      <tr key={item.projectSlug} className="border-b border-hair-2 last:border-b-0">
-                        <td className="px-4 py-2">
-                          <div className="text-[13px] text-ink">{item.projectName}</div>
-                          <div className="font-mono text-[11.5px] text-muted">
-                            {item.projectSlug}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
-                          {item.repoFullName ?? '—'}
-                        </td>
-                        <td className="px-4 py-2">
-                          {item.matched ? (
-                            <div className="font-mono text-[11.5px] text-ink-2">{item.rig}</div>
-                          ) : (
-                            <Chip kind="high">no rig</Chip>
-                          )}
-                          {item.matched && item.rigPath && (
-                            <div className="font-mono text-[11px] text-muted">{item.rigPath}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-[12px] text-muted">
-                          <div>{item.reason}</div>
-                          {!item.matched && item.fix && (
-                            <div className="mt-1 text-[12px] text-ink-2">{item.fix}</div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable>
+                <THead>
+                  <TR>
+                    <TH>Project</TH>
+                    <TH>Repository</TH>
+                    <TH>Rig</TH>
+                    <TH>Match</TH>
+                  </TR>
+                </THead>
+                <tbody>
+                  {projectRigItems.map((item) => (
+                    <TR key={item.projectSlug}>
+                      <TD>
+                        <div className="text-[13px] text-ink">{item.projectName}</div>
+                        <div className="font-mono text-[11.5px] text-muted">{item.projectSlug}</div>
+                      </TD>
+                      <TD className="font-mono text-[11.5px] text-ink-2">
+                        {item.repoFullName ?? '—'}
+                      </TD>
+                      <TD>
+                        {item.matched ? (
+                          <div className="font-mono text-[11.5px] text-ink-2">{item.rig}</div>
+                        ) : (
+                          <Chip kind="high">no rig</Chip>
+                        )}
+                        {item.matched && item.rigPath && (
+                          <div className="font-mono text-[11px] text-muted">{item.rigPath}</div>
+                        )}
+                      </TD>
+                      <TD className="text-[12px] text-muted">
+                        <div>{item.reason}</div>
+                        {!item.matched && item.fix && (
+                          <div className="mt-1 text-[12px] text-ink-2">{item.fix}</div>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </DataTable>
             )}
           </Card>
         ) : (
@@ -380,36 +389,30 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
                 </p>
               </CardBody>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
-                    <tr className="border-b border-ink">
-                      <th className="px-4 py-2 font-medium">State</th>
-                      <th className="px-4 py-2 font-medium">Agent</th>
-                      <th className="px-4 py-2 font-medium">Provider</th>
-                      <th className="px-4 py-2 font-medium">Pool</th>
-                      <th className="px-4 py-2 font-medium">Reported</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {agentItems.map((agent, i) => (
-                      <tr key={agent.name ?? i} className="border-b border-hair-2 last:border-b-0">
-                        <td className="px-4 py-2">
-                          <StatusDot status={agentStatus(agent)} />
-                        </td>
-                        <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
-                          {agent.name ?? '—'}
-                        </td>
-                        <td className="px-4 py-2">{agent.provider ?? agent.display_name ?? '—'}</td>
-                        <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
-                          {agent.pool ?? '—'}
-                        </td>
-                        <td className="px-4 py-2 text-muted">{agent.state ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable>
+                <THead>
+                  <TR>
+                    <TH>State</TH>
+                    <TH>Agent</TH>
+                    <TH>Provider</TH>
+                    <TH>Pool</TH>
+                    <TH>Reported</TH>
+                  </TR>
+                </THead>
+                <tbody>
+                  {agentItems.map((agent, i) => (
+                    <TR key={agent.name ?? i}>
+                      <TD>
+                        <StatusDot status={agentStatus(agent)} />
+                      </TD>
+                      <TD className="font-mono text-[11.5px] text-ink-2">{agent.name ?? '—'}</TD>
+                      <TD>{agent.provider ?? agent.display_name ?? '—'}</TD>
+                      <TD className="font-mono text-[11.5px] text-ink-2">{agent.pool ?? '—'}</TD>
+                      <TD className="text-muted">{agent.state ?? '—'}</TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </DataTable>
             )}
           </Card>
         ) : (
@@ -434,39 +437,37 @@ export default async function CityPage({ params }: { params: Promise<{ slug: str
                 <p className="m-0 text-[13px] text-muted">No sessions are running right now.</p>
               </CardBody>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
-                    <tr className="border-b border-ink">
-                      <th className="px-4 py-2 font-medium">State</th>
-                      <th className="px-4 py-2 font-medium">Session</th>
-                      <th className="px-4 py-2 font-medium">Template</th>
-                      <th className="px-4 py-2 font-medium">Provider</th>
-                      <th className="px-4 py-2 font-medium">Last active</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessionItems.map((session_, i) => (
-                      <tr key={session_.id ?? i} className="border-b border-hair-2 last:border-b-0">
-                        <td className="px-4 py-2">
-                          <StatusDot status={sessionStatus(session_.state)} />
-                        </td>
-                        <td className="px-4 py-2">
-                          <div className="font-mono text-[11.5px] text-ink-2">
-                            {session_.alias ?? session_.title ?? session_.id ?? '—'}
-                          </div>
-                          <div className="text-[12px] text-muted">{session_.state ?? '—'}</div>
-                        </td>
-                        <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
-                          {session_.template ?? session_.kind ?? '—'}
-                        </td>
-                        <td className="px-4 py-2">{session_.provider ?? session_.display_name ?? '—'}</td>
-                        <td className="px-4 py-2 text-muted">{ago(session_.last_active)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable>
+                <THead>
+                  <TR>
+                    <TH>State</TH>
+                    <TH>Session</TH>
+                    <TH>Template</TH>
+                    <TH>Provider</TH>
+                    <TH>Last active</TH>
+                  </TR>
+                </THead>
+                <tbody>
+                  {sessionItems.map((session_, i) => (
+                    <TR key={session_.id ?? i}>
+                      <TD>
+                        <StatusDot status={sessionStatus(session_.state)} />
+                      </TD>
+                      <TD>
+                        <div className="font-mono text-[11.5px] text-ink-2">
+                          {session_.alias ?? session_.title ?? session_.id ?? '—'}
+                        </div>
+                        <div className="text-[12px] text-muted">{session_.state ?? '—'}</div>
+                      </TD>
+                      <TD className="font-mono text-[11.5px] text-ink-2">
+                        {session_.template ?? session_.kind ?? '—'}
+                      </TD>
+                      <TD>{session_.provider ?? session_.display_name ?? '—'}</TD>
+                      <TD className="text-muted">{ago(session_.last_active)}</TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </DataTable>
             )}
           </Card>
         ) : (

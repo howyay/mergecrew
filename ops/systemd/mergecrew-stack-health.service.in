@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the mergecrew stack is serving sd.yay.how and repair it if not
+After=mergecrew-stack.service
+
+[Service]
+Type=oneshot
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+ExecStart=__NODE__ __REPO__/ops/systemd/stack-health.mjs --repair
+TimeoutStartSec=1200
+SyslogIdentifier=mergecrew-stack-health

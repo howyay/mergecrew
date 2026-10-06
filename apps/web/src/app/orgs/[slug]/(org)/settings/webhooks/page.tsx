@@ -2,7 +2,7 @@ import { revalidatePath } from 'next/cache';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, PageHead } from '@/components/ui';
 import { TestWebhookButton } from '@/components/test-webhook-button';
 import { CreatedSecretCallout } from '@/components/created-secret-callout';
 import { WebhookDeliveriesLog, type DeliveryRow } from '@/components/webhook-deliveries-log';
@@ -95,13 +95,20 @@ export default async function WebhooksPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Outbound webhooks</h1>
-        <p className="text-sm text-zinc-500">
-          POSTs to your endpoints when matching timeline events fire. Each delivery is signed —
-          verify with <code>verifyWebhook()</code> from <code>@mergecrew/sdk</code>.
-        </p>
-      </header>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Org settings', href: `/orgs/${slug}/settings` },
+          { label: 'Outbound webhooks' },
+        ]}
+        title="Outbound webhooks"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
+            POSTs to your endpoints when matching timeline events fire. Each delivery is signed —
+            verify with <code>verifyWebhook()</code> from <code>@mergecrew/sdk</code>.
+          </span>
+        }
+      />
 
       {justCreated && (
         <CreatedSecretCallout

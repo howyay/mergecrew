@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card, Chip } from '@/components/ui';
+import { Card, Chip, DataTable, PageHead, TD, TH, THead, TR } from '@/components/ui';
 
 interface EvalRun {
   id: string;
@@ -66,29 +66,30 @@ export default async function CompareEvalsPage({
 
   return (
     <main className="mx-auto max-w-4xl space-y-4 p-6">
-      <Link
-        href={`/orgs/${slug}/evals`}
-        className="text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-700 dark:hover:text-zinc-300"
-      >
-        ← Back to evals
-      </Link>
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">A/B comparison</h1>
-          <p className="text-sm text-zinc-500">
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Evals', href: `/orgs/${slug}/evals` },
+          { label: 'A/B comparison' },
+        ]}
+        title="A/B comparison"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
             {new Date(data.abRun.startedAt).toLocaleString()} ·{' '}
             <code>{profileA?.name ?? 'A'}</code> vs <code>{profileB?.name ?? 'B'}</code>
-          </p>
-        </div>
-        <a
-          href="https://github.com/mergecrew/mergecrew/blob/main/docs/03-infrastructure/15-evals.md#ab-compare"
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-700 dark:hover:text-zinc-300"
-        >
-          Eval cookbook →
-        </a>
-      </header>
+          </span>
+        }
+        actions={
+          <a
+            href="https://github.com/mergecrew/mergecrew/blob/main/docs/03-infrastructure/15-evals.md#ab-compare"
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[11px] text-muted underline decoration-dotted hover:text-ink"
+          >
+            Eval cookbook →
+          </a>
+        }
+      />
 
       <Card>
         <div className="grid grid-cols-3 gap-3 text-sm">
@@ -130,31 +131,31 @@ export default async function CompareEvalsPage({
           Per-fixture
         </h2>
         <Card className="p-0">
-          <table className="w-full text-sm">
-            <thead className="border-b text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-              <tr>
-                <th className="px-3 py-2 font-normal">Fixture</th>
-                <th className="px-3 py-2 font-normal">A</th>
-                <th className="px-3 py-2 font-normal">B</th>
-              </tr>
-            </thead>
+          <DataTable>
+            <THead>
+              <TR>
+                <TH>Fixture</TH>
+                <TH>A</TH>
+                <TH>B</TH>
+              </TR>
+            </THead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {fixtureIds.map((id) => {
                 const { a, b } = byFixture.get(id)!;
                 return (
-                  <tr key={id}>
-                    <td className="px-3 py-2 font-mono text-xs">{id}</td>
-                    <td className="px-3 py-2">
+                  <TR key={id}>
+                    <TD className="font-mono text-xs">{id}</TD>
+                    <TD>
                       <Cell row={a} />
-                    </td>
-                    <td className="px-3 py-2">
+                    </TD>
+                    <TD>
                       <Cell row={b} />
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         </Card>
       </section>
 

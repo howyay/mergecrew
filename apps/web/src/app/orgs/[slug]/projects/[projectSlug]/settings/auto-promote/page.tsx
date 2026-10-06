@@ -2,7 +2,7 @@ import { revalidatePath } from 'next/cache';
 import { api, apiOr404 } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
-import { Card } from '@/components/ui';
+import { Card, PageHead } from '@/components/ui';
 import { AutoPromoteEditor } from '@/components/auto-promote-editor';
 
 interface AutoPromoteRule {
@@ -33,13 +33,24 @@ export default async function AutoPromotePage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Auto-promote rules</h1>
-        <p className="text-sm text-zinc-500">
-          Changesets that match any rule below will skip human review and auto-promote.
-          Empty list = every changeset goes through the manual approval gate.
-        </p>
-      </header>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: projectSlug, href: `/orgs/${slug}/projects/${projectSlug}` },
+          {
+            label: 'Settings',
+            href: `/orgs/${slug}/projects/${projectSlug}/settings`,
+          },
+          { label: 'Auto-promote rules' },
+        ]}
+        title="Auto-promote rules"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
+            Changesets that match any rule below will skip human review and auto-promote.
+            Empty list = every changeset goes through the manual approval gate.
+          </span>
+        }
+      />
 
       <Card>
         <AutoPromoteEditor

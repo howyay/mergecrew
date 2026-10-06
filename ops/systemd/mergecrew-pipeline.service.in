@@ -1,0 +1,54 @@
+# The pipeline: an idea a human accepted becomes a PRD, an issue, an isolated
+# worktree, a dev agent, and finally an autonomous UAT run with a demo recording
+# — all without anyone typing a command.
+#
+# PIPELINE_DEV_AGENT=on is what allows spawning agents. It is set here (not
+# defaulted in code) so the switch that spends real agent runs is visible in one
+# place a human can read and edit.
+[Unit]
+Description=mergecrew pipeline (accepted idea -> PRD -> issue -> isolated dev agent -> UAT + demo)
+After=network-online.target mergecrew-ideation.service
+Wants=mergecrew-ideation.service
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+Environment=MERGECREW_REPO=__REPO__
+Environment=IDEATION_STATE_FILE=__REPO__/ops/ideation/state/ideas.json
+Environment=PIPELINE_DEV_AGENT=on
+Environment=PIPELINE_MAX_PER_SWEEP=4
+# Two separate budgets on purpose. A dev agent run takes tens of minutes and a
+# UAT takes about one, so one number for both would either stall the queue or
+# open a dozen browsers. A full dev budget defers the cards that need an agent;
+# it does not stop another card's QA or deliverable from advancing.
+Environment=PIPELINE_MAX_DEV=2
+Environment=PIPELINE_MAX_QA=2
+# Where an operator can watch a dev agent work: `dsh headless --json` prints the
+# session id on its first line and the pipeline puts it on the card. There is no
+# per-session deep link (the UI is a single-page app), so the link opens the
+# harness, where the session appears under this repo's working directory.
+Environment=DSH_WEB_URL=http://127.0.0.1:53087/
+Environment=PIPELINE_INTERVAL_SECONDS=20
+Environment=PIPELINE_UAT_URL=http://127.0.0.1:3100/orgs/demo/ideas
+# Which CLI implements an idea. `claude` and `pi` are both installed here and
+# both route to the ai.yay.how gateway, which answers every request with
+# `[claude-code:unrecognized_model]` / `ALL_TARGETS_SKIPPED` — a provider
+# outage the pipeline correctly refuses to call a task failure. `dsh headless`
+# reaches a model on this host today, so it is named explicitly instead of
+# leaving the choice to `auto` (which would pick claude first and park every
+# idea). Switch this line back the day the gateway serves claude again.
+Environment=DEV_AGENT=dsh
+Environment=DSH_BIN=__DSH__
+# Issue filing credentials live outside the unit so the unit stays shareable.
+# The file is optional (leading `-`) and gitignored: with no file, issues are
+# queued locally next to the PRD instead of being filed on a forge.
+EnvironmentFile=-__REPO__/ops/pipeline/forgejo.env
+ExecStart=__NODE__ __REPO__/ops/pipeline/run.mjs --watch
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+SyslogIdentifier=mergecrew-pipeline
+
+[Install]
+WantedBy=default.target

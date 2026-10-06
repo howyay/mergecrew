@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { apiOr404 } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card, LinkButton } from '@/components/ui';
+import { Card, LinkButton, PageHead } from '@/components/ui';
 
 /**
  * The Timeline tab is a passthrough to the latest run's detail page (which
@@ -27,12 +27,19 @@ export default async function TimelinePage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Timeline</h1>
-        <p className="text-sm text-zinc-500">
-          Live transcript of the project's most recent run.
-        </p>
-      </header>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: projectSlug, href: `/orgs/${slug}/projects/${projectSlug}` },
+          { label: 'Timeline' },
+        ]}
+        title="Timeline"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
+            Live transcript of the project's most recent run.
+          </span>
+        }
+      />
       <Card>
         <p className="text-sm text-zinc-600 dark:text-zinc-300">
           No runs yet for this project. Trigger one to see the timeline stream live.

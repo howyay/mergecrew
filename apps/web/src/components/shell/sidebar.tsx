@@ -116,6 +116,7 @@ export function OrgSidebar({
           href: `${base}/projects`,
           count: projectCount != null ? String(projectCount) : undefined,
         },
+        { label: 'Ideas', href: `${base}/ideas` },
         { label: 'Inbox', href: `${base}/inbox` },
       ],
     },

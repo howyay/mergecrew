@@ -1,6 +1,6 @@
 import { api, ApiError, type Session } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card, PageHead, Tile as UiTile } from '@/components/ui';
+import { Card, DataTable, PageHead, TD, TH, THead, TR, Tile as UiTile } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 
 interface CostRow {
@@ -217,38 +217,32 @@ export default async function CostsPage({
           {costs.items.length === 0 ? (
             <div className="p-4 text-[13px] text-muted">No spend recorded in this window.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[13px]">
-                <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
-                  <tr className="border-b border-ink">
-                    <th className="px-4 py-2 font-medium">Day</th>
-                    <th className="px-4 py-2 font-medium">Provider</th>
-                    <th className="px-4 py-2 font-medium">Model</th>
-                    <th className="px-4 py-2 text-right font-medium">Tokens</th>
-                    <th className="px-4 py-2 text-right font-medium">USD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {costs.items.map((r, i) => (
-                    <tr key={i} className="border-b border-hair-2 last:border-b-0">
-                      <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
-                        {new Date(r.day).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-2">{r.provider_kind}</td>
-                      <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
-                        {r.model_id}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {formatNumber(r.tokens)}
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono tabular-nums">
-                        ${Number(r.usd).toFixed(4)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable>
+              <THead>
+                <TR>
+                  <TH>Day</TH>
+                  <TH>Provider</TH>
+                  <TH>Model</TH>
+                  <TH align="right">Tokens</TH>
+                  <TH align="right">USD</TH>
+                </TR>
+              </THead>
+              <tbody>
+                {costs.items.map((r, i) => (
+                  <TR key={i}>
+                    <TD className="font-mono text-[11.5px] text-ink-2">
+                      {new Date(r.day).toLocaleDateString()}
+                    </TD>
+                    <TD>{r.provider_kind}</TD>
+                    <TD className="font-mono text-[11.5px] text-ink-2">{r.model_id}</TD>
+                    <TD align="right">{formatNumber(r.tokens)}</TD>
+                    <TD align="right" className="font-mono">
+                      ${Number(r.usd).toFixed(4)}
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+            </DataTable>
           )}
         </Card>
       </section>

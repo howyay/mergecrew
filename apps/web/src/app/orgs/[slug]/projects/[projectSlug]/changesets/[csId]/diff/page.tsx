@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { api, apiOr404 } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card, Chip } from '@/components/ui';
+import { Card, Chip, PageHead } from '@/components/ui';
 import { DiffView, type DiffFile, type CommentRecord } from './diff-view';
 
 interface DiffPayload {
@@ -41,16 +40,23 @@ export default async function ChangesetDiffPage({
 
   return (
     <main className="mx-auto max-w-5xl space-y-4 p-6">
-      <header className="flex items-baseline justify-between gap-3">
-        <div>
-          <Link
-            href={`/orgs/${slug}/projects/${projectSlug}/changesets/${csId}`}
-            className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-          >
-            ← back to changeset
-          </Link>
-          <h1 className="text-xl font-semibold">{cs.title}</h1>
-          <p className="text-sm font-mono text-zinc-500">
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: projectSlug, href: `/orgs/${slug}/projects/${projectSlug}` },
+          {
+            label: 'Changesets',
+            href: `/orgs/${slug}/projects/${projectSlug}/changesets`,
+          },
+          {
+            label: cs.prNumber ? `#${cs.prNumber}` : cs.id.slice(0, 8),
+            href: `/orgs/${slug}/projects/${projectSlug}/changesets/${csId}`,
+          },
+          { label: 'Diff' },
+        ]}
+        title={cs.title}
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
             {cs.id} · <Chip>{cs.status}</Chip>
             {cs.prNumber && cs.prUrl && (
               <>
@@ -60,9 +66,9 @@ export default async function ChangesetDiffPage({
                 </a>
               </>
             )}
-          </p>
-        </div>
-      </header>
+          </span>
+        }
+      />
 
       {'error' in diff ? (
         <Card>

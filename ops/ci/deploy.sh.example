@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Example CD hook for the primitive CI loop.
+#
+# ops/ci/ci-loop.mjs runs this file ONLY when every check in checks.conf passed
+# and this file is executable. Rename it to `deploy.sh` and `chmod +x` it to
+# enable CD; it is gitignored so a machine-specific deploy target cannot be
+# committed by accident.
+#
+# Contract:
+#   - cwd is the repository root, CI=1 is set in the environment.
+#   - exit 0 = deploy succeeded, anything else = deploy failed (the run is
+#     recorded as failed in ops/ci/state/last-run.json).
+#   - stdout/stderr are captured into last-run.json (tail) and journald.
+#   - Keep it idempotent: it may run once per commit, forever.
+set -euo pipefail
+
+echo "example deploy hook: nothing to deploy"
+echo "replace this file with the real deploy command for this host"
+exit 0
