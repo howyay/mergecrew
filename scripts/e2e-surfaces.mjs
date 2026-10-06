@@ -133,6 +133,40 @@ async function main() {
     home.body.includes(`/orgs/${ORG}/activity`) ? 'found /activity link' : 'no /activity link',
   );
 
+  // The sidebar draws one lucide glyph per item. Those icons lived as an
+  // uncommitted edit for a while, so an image built from git shipped without
+  // them and the nav fell back to bare squares. Checking the rendered class
+  // names is what makes that regression loud instead of cosmetic.
+  // ("Building2" kebab-cases to `building2`, so it is matched by prefix.)
+  const EXPECTED_ICONS = [
+    'layout-dashboard',
+    'folder-kanban',
+    'lightbulb',
+    'inbox',
+    'chart-line',
+    'wallet',
+    'flask-conical',
+    'workflow',
+    'sparkles',
+    'settings',
+  ];
+  const missingIcons = EXPECTED_ICONS.filter((name) => !home.body.includes(`lucide-${name}`));
+  const iconCount = new Set(home.body.match(/lucide-[a-z0-9-]+/g) ?? []).size;
+  check(
+    'stack',
+    'nav renders an icon per item',
+    missingIcons.length === 0 && home.body.includes('lucide-building'),
+    missingIcons.length > 0
+      ? `missing lucide-${missingIcons.join(', lucide-')}`
+      : `${iconCount} distinct lucide icons in the shell`,
+  );
+  check(
+    'stack',
+    'nav has no Activity icon',
+    !home.body.includes('lucide-activity'),
+    home.body.includes('lucide-activity') ? 'found lucide-activity in the shell' : 'no Activity icon',
+  );
+
   // ── projects ─────────────────────────────────────────────────────────────
   console.log('\nprojects');
   const projects = await apiGet(`/v1/orgs/${ORG}/projects`);
