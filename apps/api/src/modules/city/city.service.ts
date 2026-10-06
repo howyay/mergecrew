@@ -201,7 +201,13 @@ export function rigsFromAgents(items: unknown[], configured?: string): string[] 
   return [...names];
 }
 
-const DEFAULT_TIMEOUT_MS = 1_500;
+/**
+ * A city read can be slow without being broken: the supervisor sweeps every agent
+ * and every session before it answers, and a loaded host pushes that past a second.
+ * At 1.5s a busy city read as unreachable and the Gas City screens filled with
+ * failure cards, so the budget has to cover a real sweep.
+ */
+const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_RIG_CACHE_MS = 5_000;
 
 /** The rigs of one city, plus every project of the organization bound to one. */
@@ -336,22 +342,30 @@ export class CityService {
 
   private async read<T>(resource: string): Promise<T> {
     const url = `${this.baseUrl}/v0/city/${encodeURIComponent(this.city)}/${resource}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) {
-        throw new Error(`city read "${resource}" failed: HTTP ${response.status}`);
+    // Two attempts, and only a *timeout* is repeated: a refused connection or an
+    // HTTP status is the city answering, and asking again would only make the
+    // operator wait for the same verdict.
+    const attempts = 2;
+    let message = 'the city did not answer';
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`city read "${resource}" failed: HTTP ${response.status}`);
+        }
+        return (await response.json()) as T;
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`city read "${resource}" failed (attempt ${attempt} of ${attempts}): ${message}`);
+        if (!controller.signal.aborted) break;
+      } finally {
+        clearTimeout(timer);
       }
-      return (await response.json()) as T;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`city read "${resource}" failed: ${message}`);
-      throw new Error(
-        `Gas City is not reachable at ${this.baseUrl}. Start the supervisor, or set CITY_API_URL. (${message})`,
-      );
-    } finally {
-      clearTimeout(timer);
     }
+    throw new Error(
+      `Gas City is not reachable at ${this.baseUrl}. Start the supervisor, or set CITY_API_URL. (${message})`,
+    );
   }
 }

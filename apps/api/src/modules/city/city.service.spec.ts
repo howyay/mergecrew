@@ -83,8 +83,32 @@ describe('CityService', () => {
   it('names the address and the fix when the supervisor is unreachable', async () => {
     process.env.CITY_API_URL = 'http://127.0.0.1:9';
     const service = new CityService();
-    global.fetch = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED')) as unknown as typeof fetch;
+    const fetchMock = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED'));
+    global.fetch = fetchMock as unknown as typeof fetch;
     await expect(service.status()).rejects.toThrow(/Gas City is not reachable at http:\/\/127\.0\.0\.1:9/);
+    // A refused connection is an answer: it must not be retried.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a slow city a second chance instead of calling it unreachable', async () => {
+    process.env.CITY_API_URL = 'http://127.0.0.1:8372';
+    process.env.CITY_API_TIMEOUT_MS = '25';
+    const service = new CityService();
+    const fetchMock = jest
+      .fn()
+      .mockImplementationOnce(
+        (_url: string, init: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+          }),
+      )
+      .mockResolvedValue({ ok: true, json: async () => ({ name: 'gascity', agent_count: 3 }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const status = await service.status();
+
+    expect(status.name).toBe('gascity');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('reads the agent list once for a burst of tenant reads', async () => {
