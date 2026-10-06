@@ -1,6 +1,7 @@
 import { api, apiOr404 } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
+import { SKILL_CATALOG_ROUTE, type SkillRow } from '@/lib/skill-catalog';
 import { Card, Label, PageHead, StatBadge } from '@/components/ui';
 import {
   LifecycleEditor,
@@ -11,12 +12,6 @@ import {
   StockTemplatePicker,
   type StockTemplateSummary,
 } from '@/components/lifecycle/stock-template-picker';
-
-interface SkillRow {
-  name: string;
-  description: string;
-  sideEffectClass: string;
-}
 
 export default async function LifecyclePage({
   params,
@@ -31,7 +26,7 @@ export default async function LifecyclePage({
       { session },
     ),
     apiOr404<{ demo?: boolean }>(`/v1/orgs/${slug}/projects/${projectSlug}`, { session }),
-    api<{ items: SkillRow[] }>('/v1/skills', { session }),
+    api<{ items: SkillRow[] }>(SKILL_CATALOG_ROUTE, { session }),
     hasRole(slug, session, 'admin'),
     api<{ positions: Record<string, { x: number; y: number }> }>(
       `/v1/orgs/${slug}/projects/${projectSlug}/lifecycle/graph-layout`,

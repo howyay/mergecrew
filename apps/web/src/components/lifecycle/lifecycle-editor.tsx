@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui';
+import { skillCatalogPath, type SkillRow } from '@/lib/skill-catalog';
 import {
   upsertAgentAction,
   deleteAgentAction,
@@ -62,13 +64,24 @@ export interface ParsedConfig {
   skills: Record<string, CustomSkillDef>;
 }
 
-interface SkillCatalogEntry {
-  name: string;
-  description: string;
-  sideEffectClass: string;
-}
-
 type Tab = 'graph' | 'workflows' | 'agents' | 'skills' | 'gates' | 'source';
+
+/**
+ * The editor authors; it does not catalogue.
+ *
+ * The stock catalog is global and read-only, so it is listed on exactly one
+ * page (Skills and tools) and this editor links there instead of re-rendering
+ * it. What stays here is what only this scope can know: the custom skills the
+ * org template or the project defines, which the Agents tab binds by name.
+ */
+const TAB_LABELS: Record<Tab, string> = {
+  graph: 'Graph',
+  agents: 'Agents',
+  workflows: 'Workflows',
+  skills: 'Custom skills',
+  gates: 'Gates',
+  source: 'Source',
+};
 
 export function LifecycleEditor({
   scope,
@@ -83,7 +96,7 @@ export function LifecycleEditor({
   scope: LifecycleScope;
   parsed: ParsedConfig;
   sourceYaml: string;
-  catalog: SkillCatalogEntry[];
+  catalog: SkillRow[];
   showApplyTemplate?: boolean;
   /** When true, all create/edit/delete affordances are hidden. Data still renders. */
   readOnly?: boolean;
@@ -125,13 +138,13 @@ export function LifecycleEditor({
             key={t}
             onClick={() => setTab(t)}
             className={
-              'px-3 py-[6px] text-[13px] font-medium capitalize transition-colors border ' +
+              'px-3 py-[6px] text-[13px] font-medium transition-colors border ' +
               (tab === t
                 ? 'border-ink bg-ink text-paper'
                 : 'border-transparent text-ink-2 hover:bg-paper-2')
             }
           >
-            {t}
+            {TAB_LABELS[t]}
           </button>
         ))}
         <span className="ml-auto font-mono text-[11.5px] text-muted">v{parsed.version ?? 1}</span>
@@ -238,7 +251,7 @@ function AgentsTab({
 }: {
   scope: LifecycleScope;
   agents: Record<string, AgentDef>;
-  catalog: SkillCatalogEntry[];
+  catalog: SkillRow[];
   customSkills: string[];
   pending: boolean;
   wrap: (run: () => Promise<unknown>, ok?: string) => void;
@@ -795,7 +808,7 @@ function SkillsTab({
 }: {
   scope: LifecycleScope;
   skills: Record<string, CustomSkillDef>;
-  catalog: SkillCatalogEntry[];
+  catalog: SkillRow[];
   pending: boolean;
   wrap: (run: () => Promise<unknown>, ok?: string) => void;
   readOnly: boolean;
@@ -806,19 +819,18 @@ function SkillsTab({
   return (
     <div className="space-y-4">
       <section>
-        <div className="flex items-baseline justify-between">
-          <p className="text-sm text-zinc-500">
-            Stock skills from the runtime ({catalog.length}). Read-only — bundled with the deployment.
-          </p>
-        </div>
-        <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded border p-2 dark:border-zinc-800">
-          {catalog.map((s) => (
-            <li key={s.name} className="text-xs">
-              <span className="font-mono text-zinc-800 dark:text-zinc-200">{s.name}</span>{' '}
-              <span className="text-zinc-500">— {s.description}</span>
-            </li>
-          ))}
-        </ul>
+        <p className="text-sm text-zinc-500">
+          The stock catalog&rsquo;s {catalog.length} skills are global and read-only, so they live in
+          one place:{' '}
+          <Link
+            href={skillCatalogPath(scope.orgSlug)}
+            className="underline underline-offset-2 text-zinc-700 dark:text-zinc-300"
+          >
+            Skills and tools
+          </Link>{' '}
+          shows the catalog and what each agent kind can actually call. Bind them per agent in the
+          Agents tab.
+        </p>
       </section>
 
       <section>

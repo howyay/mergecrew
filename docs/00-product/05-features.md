@@ -41,8 +41,8 @@ Concrete feature inventory grouped by surface. Each feature has a brief descript
 | Custom agent definitions in `mergecrew.yaml` | Mira | Implemented |
 | `description:` field on agents and workflows (rendered on Lifecycle + Agents pages) | Mira | Implemented (lifecycle YAML schema only — not a Prisma column) |
 | Multi-agent specialization | Mira | Implemented — `roster` profile (default) drives the 9-agent Discovery → PM → Implementation (BE + FE) → QA → DeployDev → Observation (DesignReviewer + Observation + BugTriage + DocWriter) graph with loop-backs; the legacy `careful` profile (planner → coder → reviewer) is still supported. See [`03-infrastructure/18-multi-agent.md`](../03-infrastructure/18-multi-agent.md). |
-| Stock skills library (~25 skills, see §Skills below) | All | In progress |
-| Custom skill definitions (OpenAPI / JSON-schema-shaped) | Mira | Planned |
+| Stock skills library | All | Implemented — the live catalog is the Skills and tools page (`/v1/skills`), which lists every stock skill with its side-effect class |
+| Custom skill definitions (OpenAPI / JSON-schema-shaped) | Mira | Implemented — authored per lifecycle scope (org template or project) in the editor's Custom skills tab |
 | Per-agent and per-skill model assignment with capability requirements | Mira | Implemented |
 | Marketplace of community-contributed agents/skills | All | Planned |
 
@@ -137,31 +137,17 @@ Concrete feature inventory grouped by surface. Each feature has a brief descript
 
 ## Stock skills (catalog)
 
-Repo-shaped:
-- `repo.read_file`, `repo.write_file`, `repo.list_paths`, `repo.search`, `repo.git.commit`, `repo.git.create_branch`, `repo.git.open_pr`, `repo.git.comment_pr`, `repo.git.revert_pr`.
+The catalog has one home in the product — the Skills and tools page, which lists every stock skill
+with its side-effect class and shows what each agent kind actually sees on the wire (`/v1/tools`) —
+and one source of truth in the repo: `packages/skills/src/stock/<area>.ts`, flattened by
+`packages/skills/src/catalog.ts`.
 
-Build/test:
-- `build.run_install`, `build.run_typecheck`, `build.run_lint`, `build.run_unit_tests`, `build.run_integration_tests`.
+This document deliberately keeps no second copy of the list. A hand-written enumeration of the
+catalog drifts the moment a skill is added, and the two places disagreed for a while (the list here
+said ~25 skills while the runtime shipped 36).
 
-Deploy:
-- `deploy.dev`, `deploy.prod`, `deploy.status`, `deploy.logs`, `deploy.url_for_branch`.
-
-Observation:
-- `web.fetch_url`, `web.screenshot_url`, `web.lighthouse`, `errors.list_recent` (Sentry-shaped), `analytics.event_counts` (Posthog-shaped, Planned).
-
-Tracker:
-- `tracker.list_issues`, `tracker.create_issue`, `tracker.comment_issue`.
-
-Comms:
-- `slack.post`, `email.send_to_org_owner`.
-
-Memory:
-- `memory.recall`, `memory.store` (project-scoped vector store).
-
-Reasoning helpers:
-- `llm.summarize`, `llm.draft_spec`, `llm.draft_release_notes`.
-
-Each skill carries a JSON-schema input/output definition, capability requirements, side-effect class (read/write/external), and a default model assignment.
+Each skill carries a JSON-schema input/output definition, capability requirements, side-effect class
+(read / write workspace / write external / irreversible), and a default model assignment.
 
 ## Runner & sandboxing
 
