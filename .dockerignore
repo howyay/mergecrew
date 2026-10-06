@@ -9,6 +9,13 @@
 **/coverage
 **/.nyc_output
 
+# TypeScript incremental state. `**/dist` is excluded above, so a
+# tsbuildinfo that survives into the build context makes `tsc` believe the
+# emitted files are current and emit nothing — every package importing the
+# skipped one then fails with "Cannot find module '@mergecrew/domain'".
+# The image must always compile from source, whatever the worktree holds.
+**/*.tsbuildinfo
+
 # Local secrets and editor scratch.
 .env
 .env.*
