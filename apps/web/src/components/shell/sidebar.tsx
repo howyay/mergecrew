@@ -3,9 +3,36 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
+import {
+  Bot,
+  Building2,
+  CalendarCheck,
+  ChartLine,
+  FlaskConical,
+  FolderKanban,
+  GitPullRequest,
+  Inbox,
+  LayoutDashboard,
+  Lightbulb,
+  ListChecks,
+  Newspaper,
+  Repeat,
+  ScanSearch,
+  Settings,
+  Sparkles,
+  Wallet,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 import { HealthBadge } from '../ui';
 
-type Item = { label: string; href: string; count?: string; livePending?: boolean };
+type Item = {
+  label: string;
+  href: string;
+  count?: string;
+  livePending?: boolean;
+  icon: LucideIcon;
+};
 type Group = { label: string; items: Item[] };
 
 // Active item = longest href that the current path matches. Falling
@@ -49,11 +76,13 @@ function NavItem({
           : 'border-transparent text-ink-2 hover:bg-bg',
       )}
     >
-      <span
-        className={clsx(
-          'h-[14px] w-[14px] flex-shrink-0 border-[1.5px]',
-          active ? 'border-accent bg-accent' : 'border-current opacity-60',
-        )}
+      {/* Decorative: the label carries the meaning, so the icon must not be
+          announced twice. It inherits the link's text colour and only its
+          opacity marks the active row. */}
+      <item.icon
+        className={clsx('h-[15px] w-[15px] flex-shrink-0', active ? 'opacity-100' : 'opacity-70')}
+        strokeWidth={1.75}
+        aria-hidden
       />
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
         {item.label}
@@ -110,35 +139,36 @@ export function OrgSidebar({
     {
       label: 'Workspace',
       items: [
-        { label: 'Overview', href: base },
+        { label: 'Overview', href: base, icon: LayoutDashboard },
         {
           label: 'Projects',
           href: `${base}/projects`,
           count: projectCount != null ? String(projectCount) : undefined,
+          icon: FolderKanban,
         },
-        { label: 'Ideas', href: `${base}/ideas` },
-        { label: 'Inbox', href: `${base}/inbox` },
+        { label: 'Ideas', href: `${base}/ideas`, icon: Lightbulb },
+        { label: 'Inbox', href: `${base}/inbox`, icon: Inbox },
       ],
     },
     {
       label: 'Operations',
       items: [
-        { label: 'Gas City', href: `${base}/city` },
-        { label: 'Metrics', href: `${base}/metrics` },
-        { label: 'Costs', href: `${base}/costs` },
-        { label: 'Evals', href: `${base}/evals` },
+        { label: 'Gas City', href: `${base}/city`, icon: Building2 },
+        { label: 'Metrics', href: `${base}/metrics`, icon: ChartLine },
+        { label: 'Costs', href: `${base}/costs`, icon: Wallet },
+        { label: 'Evals', href: `${base}/evals`, icon: FlaskConical },
       ],
     },
     {
       label: 'Library',
       items: [
-        { label: 'Lifecycle templates', href: `${base}/lifecycle-templates` },
-        { label: 'Skills & tools', href: `${base}/skills` },
+        { label: 'Lifecycle templates', href: `${base}/lifecycle-templates`, icon: Workflow },
+        { label: 'Skills & tools', href: `${base}/skills`, icon: Sparkles },
       ],
     },
     {
       label: 'Config',
-      items: [{ label: 'Org settings', href: `${base}/settings` }],
+      items: [{ label: 'Org settings', href: `${base}/settings`, icon: Settings }],
     },
   ];
   const allHrefs = allHrefsOf(groups);
@@ -201,24 +231,29 @@ export function ProjectSidebar({
     {
       label: 'Workspace',
       items: [
-        { label: 'Today', href: base },
-        { label: 'Runs', href: `${base}/runs` },
-        { label: 'Metrics', href: `${base}/metrics` },
-        { label: 'Changesets', href: `${base}/changesets` },
-        { label: 'Digests', href: `${base}/digest`, livePending: awaitingApproval },
-        { label: 'Scan reports', href: `${base}/scans` },
+        { label: 'Today', href: base, icon: CalendarCheck },
+        { label: 'Runs', href: `${base}/runs`, icon: ListChecks },
+        { label: 'Metrics', href: `${base}/metrics`, icon: ChartLine },
+        { label: 'Changesets', href: `${base}/changesets`, icon: GitPullRequest },
+        {
+          label: 'Digests',
+          href: `${base}/digest`,
+          livePending: awaitingApproval,
+          icon: Newspaper,
+        },
+        { label: 'Scan reports', href: `${base}/scans`, icon: ScanSearch },
       ],
     },
     {
       label: 'Agents',
       items: [
-        { label: 'Agents', href: `${base}/agents` },
-        { label: 'Lifecycle', href: `${base}/lifecycle` },
+        { label: 'Agents', href: `${base}/agents`, icon: Bot },
+        { label: 'Lifecycle', href: `${base}/lifecycle`, icon: Repeat },
       ],
     },
     {
       label: 'Config',
-      items: [{ label: 'Project settings', href: `${base}/settings` }],
+      items: [{ label: 'Project settings', href: `${base}/settings`, icon: Settings }],
     },
   ];
   const allHrefs = allHrefsOf(groups);
