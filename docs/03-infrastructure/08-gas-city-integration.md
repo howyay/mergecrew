@@ -140,11 +140,34 @@ the pages read, which took the payload from 5,234 to 220 bytes on the reference 
 is the agent list, so the saving grows with the agent count. A caller that omits `view` still gets the
 full status.
 
-| Environment variable | Default | Meaning |
+### Lifecycle templates and formulas
+
+A stock lifecycle template is the authoring surface; a formula is the execution graph. They are not the
+same object and the mapping runs one way: **templates compile to formulas, templates do not become
+formulas.**
+
+| | Lifecycle template | Gas City formula |
 | - | - | - |
-| `CITY_API_URL` | `http://127.0.0.1:8372` | supervisor address |
-| `GC_CITY` | `gascity` | city name in the path |
-| `CITY_API_TIMEOUT_MS` | `1500` | read timeout |
+| Holds | the whole `MergecrewConfig`: agent kinds, budgets, skill bindings, stack hints, the YAML an operator edits | the step graph the city compiles into beads |
+| Edited by | the operator, per project, through the Lifecycle editor | nobody — it is generated, and the file says so |
+| Consumed by | the product's runner, the Lifecycle picker, the onboarding wizard | `gc formula cook`, then sessions and beads |
+
+The evidence that the mapping is mechanical: all five stock templates export without a special case,
+and the exporter's output was cooked for real — `gc formula cook mol-mc-generic-careful` produced a
+root bead plus five step beads. The evidence that the two should not be merged: a template carries
+fields the city has no place for (stack tags; MergeCrew skill names, where the city deprecated its
+`skills` key in v0.15.1 and hard-errors in v0.16), and a formula carries the landing step the
+product's runner treats as its own job. Merging them would force one side to grow a vocabulary it does
+not need.
+
+What is wired today: `packages/domain/src/formula.ts` answers `formulaNameForTemplate()` and
+`formulaStepsForTemplate()`; `GET /v1/lifecycle-templates/stock` reports the formula for each template
+and the detail route adds `compiler` and the step chain; the Lifecycle picker prints the formula on
+each card. `packages/domain/test/formula.test.ts` imports `ops/gc/formula-export.mjs` and fails when
+the name or the step chain drifts, so the product and the CLI cannot disagree without CI going red.
+
+What is not wired: the runner still executes its own step loop; it does not cook the project's
+lifecycle formula and let the city run the steps. That is the next cut, recorded as a finding.
 
 ## 7. Failure behaviour
 

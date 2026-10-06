@@ -78,6 +78,13 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/lifecycle-templates/:name/custom-skills/:skill` | PUT / DELETE | Upsert / remove a template custom skill. |
 | `/v1/orgs/:slug/lifecycle-templates/:name/human-gates` | PUT | Replace the template's gate policy. |
 
+## Stock lifecycle templates (global catalog)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/lifecycle-templates/stock` | GET | The stock templates a new project can start from, each with the Gas City formula it exports to. |
+| `/v1/lifecycle-templates/stock/:id` | GET | One template with `sourceYaml`, `parsed`, `formula`, the `compiler` requirement, and the formula's step chain. |
+
 ## Skills and tools (global catalog)
 
 | Endpoint | Method | Purpose |
