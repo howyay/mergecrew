@@ -331,7 +331,15 @@ async function main() {
   }
   const tenant = await apiGet(`/v1/orgs/${ORG}/admin/city/tenant/${ORG}`);
   if (tenant.status === 200) {
-    check('city', 'GET city tenant mapping', Boolean(tenant.json) && typeof tenant.json === 'object', `keys=${Object.keys(tenant.json ?? {}).join(',')}`);
+    // The mapping is the answer: a city that does not hold the derived rig is
+    // reported with known=false, not answered with 404.
+    const t = tenant.json ?? {};
+    check(
+      'city',
+      'GET city tenant mapping',
+      typeof t.rig === 'string' && t.rig.length > 0 && typeof t.known === 'boolean',
+      `organization=${t.organization} rig=${t.rig} known=${t.known}`,
+    );
   } else if (tenant.status === 403) {
     info('city', 'GET city tenant mapping', 'HTTP 403 for this credential');
   } else {
@@ -345,6 +353,13 @@ async function main() {
       'city page renders live data',
       unavailable === 0,
       unavailable === 0 ? 'no "unavailable" card' : `${unavailable} "unavailable" card(s) — the page kept a failed read`,
+    );
+    const stated = /unknown rig/.test(cityPage.body) || />mapped</.test(cityPage.body);
+    check(
+      'city',
+      'city page states the tenant mapping',
+      stated,
+      stated ? 'the mapping card says mapped or unknown rig' : 'the mapping card said neither',
     );
     const names = [CITY, anAgentName].filter(Boolean);
     const missing = names.filter((name) => !cityPage.body.includes(name));

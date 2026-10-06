@@ -379,6 +379,45 @@ describe('CityController project rigs', () => {
   });
 });
 
+describe('CityController tenant mapping', () => {
+  // A city that does not hold the derived rig is the normal state of an
+  // organization whose rig has not been created yet. The route reports it —
+  // the page renders "unknown rig" beside the fix — instead of answering 404,
+  // which is what hid the answer this read exists to give.
+  const controllerFor = (tenant: (slug: string) => Promise<{ organization: string; city: string; rig: string; known: boolean }>) =>
+    new CityController(
+      { tenant } as unknown as CityService,
+      {} as unknown as TenantContextService,
+    );
+
+  it('reports a missing rig as a value with known=false', async () => {
+    const controller = controllerFor(async (slug) => ({
+      organization: slug,
+      city: 'gascity',
+      rig: `mc-${slug}`,
+      known: false,
+    }));
+
+    await expect(controller.tenant('acme')).resolves.toEqual({
+      organization: 'acme',
+      city: 'gascity',
+      rig: 'mc-acme',
+      known: false,
+    });
+  });
+
+  it('reports a rig the city holds as mapped', async () => {
+    const controller = controllerFor(async (slug) => ({
+      organization: slug,
+      city: 'gascity',
+      rig: 'mergecrew',
+      known: true,
+    }));
+
+    await expect(controller.tenant('mergecrew')).resolves.toMatchObject({ rig: 'mergecrew', known: true });
+  });
+});
+
 describe('projectUsage', () => {
   // The shape the supervisor answered on 2026-10-05: 45 invocations, none of
   // them priced, so the estimate is 0 for a reason.

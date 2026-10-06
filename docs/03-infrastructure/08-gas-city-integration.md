@@ -70,7 +70,13 @@ Gas City is single-operator. MergeCrew is multi-tenant. The map is the missing l
 | Remote write | a signed grant that names the city. One grant per organization. Never reuse a grant |
 
 `ops/gc/tenant-map.mjs` renders the map and reports a missing rig, a shared rig, and an unknown
-organization. `CityService.tenant()` in the product exposes the same rule.
+organization. `CityService.tenant()` in the product exposes the same rule, and
+`GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` answers it as a report: `known` says whether the
+city holds the derived rig, and `known: false` is a value, not a 404. That is the normal state of an
+organization whose rig has not been created yet, and the Gas City page renders it as "unknown rig"
+beside the fix (create the rig, or set `CITY_RIGS`) instead of an "unavailable" card. On a
+single-rig city only the reference organization (`mergecrew`) is mapped; a `demo` organization
+derives to `mc-demo`, which the city does not hold until someone creates it.
 
 ## 6. Product surface
 

@@ -99,7 +99,7 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/admin/city/status` | GET | City state; `?view=summary` keeps the fields the pages read. |
 | `/v1/orgs/:slug/admin/city/agents` | GET | Agent list. |
 | `/v1/orgs/:slug/admin/city/sessions` | GET | Session list. |
-| `/v1/orgs/:slug/admin/city/tenant/:orgSlug` | GET | The rig an organization maps to. |
+| `/v1/orgs/:slug/admin/city/tenant/:orgSlug` | GET | The rig an organization maps to, and whether the city holds it. A missing rig is reported (`known: false`), not answered with 404. |
 | `/v1/orgs/:slug/admin/city/projects` | GET | Every project bound to its rig, with a reason and a fix for the unmapped ones. |
 | `/v1/orgs/:slug/admin/city/usage` | GET | Today's invocations, tokens and wall time with the city's own cost estimate, labelled as an estimate. |
 

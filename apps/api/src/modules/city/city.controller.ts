@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { CityService } from './city.service.js';
 import { RequireRole, RoleGuard } from '../../common/role.guard.js';
 import { TenantContextService } from '../../common/tenant-context.service.js';
@@ -62,16 +62,17 @@ export class CityController {
     return this.city.usage();
   }
 
+  /**
+   * The mapping rule's answer for one organization: the rig it derives to, and
+   * whether the city holds that rig. A city that does not hold the rig is a
+   * value here, not a failure — `known: false` is the normal state of an
+   * organization whose rig has not been created yet, the page renders it as
+   * "unknown rig" beside the fix, and the committed OpenAPI documents a 200.
+   * Answering 404 hid exactly the answer this field exists to give.
+   */
   @Get('tenant/:orgSlug')
   @RequireRole('admin')
   async tenant(@Param('orgSlug') orgSlug: string) {
-    const tenant = await this.city.tenant(orgSlug);
-    if (!tenant.known) {
-      throw new NotFoundException(
-        `The city "${tenant.city}" has no rig "${tenant.rig}" for organization "${tenant.organization}". ` +
-          'Add the rig to the city, or set CITY_RIGS to the rig list the product should accept.',
-      );
-    }
-    return tenant;
+    return this.city.tenant(orgSlug);
   }
 }
