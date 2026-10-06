@@ -48,3 +48,6 @@ ops/pipeline/deliver/
 .beads/
 .runtime/
 CLAUDE.md
+
+# The Gas City gate keeps its lock beside the checkout, not inside .beads/.
+*.gate.lock*
