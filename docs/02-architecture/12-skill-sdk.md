@@ -230,6 +230,8 @@ For HTTP-backed custom skills declared in `mergecrew.yaml`, the test surface is 
 | HTTP custom skill builder | `packages/skills/src/http-skill.ts` |
 | Executor (timeout, abort composition) | `packages/skills/src/executor.ts` |
 | Stock skill catalog | `packages/skills/src/catalog.ts` |
+| Catalog's UI home (the only place it is listed) | `apps/web/src/app/orgs/[slug]/(org)/skills/page.tsx` |
+| Shared web shape + loader (`SkillRow`, `loadSkillCatalog`) | `apps/web/src/lib/skill-catalog.ts` |
 | Stock skills by area | `packages/skills/src/stock/<area>.ts` |
 | Egress allowlist enforcement | `packages/skills/src/egress-policy.ts` |
 | Per-step context construction (runner) | `apps/runner/src/step.ts` |

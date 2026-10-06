@@ -1,9 +1,16 @@
 import { ApiError, api, type Session } from '@/lib/api';
 import { requireSession } from '@/lib/session';
+import Link from 'next/link';
 import { Card, CardBody, CardHead, Chip, PageHead, StatBadge, Tile } from '@/components/ui';
+import { SideEffectBadge } from '@/components/side-effect-badge';
+import {
+  SKILL_CATALOG_ROUTE,
+  type SideEffectClass,
+  type SkillRow,
+} from '@/lib/skill-catalog';
 
 /**
- * Skills vs tools (#324).
+ * Skills vs tools (#324) — and the catalog's only home.
  *
  * A skill is a capability in the catalog; a tool is what an agent kind actually
  * sees on the wire. The gap is a projection the runtime applies before every
@@ -11,16 +18,12 @@ import { Card, CardBody, CardHead, Chip, PageHead, StatBadge, Tile } from '@/com
  * sanitized for providers that reject them. `/v1/tools` reports that projection
  * from the same code the runtime uses, so this page never has to explain the
  * difference in prose alone: it shows both sides.
+ *
+ * The stock catalog is global and read-only, so it is listed here and nowhere
+ * else: the lifecycle editor links here instead of re-rendering it. Custom
+ * skills run the other way — they belong to one lifecycle scope, so they are
+ * authored there and this page only says where.
  */
-
-type SideEffectClass = 'read' | 'write_workspace' | 'write_external' | 'irreversible';
-
-type SkillRow = {
-  name: string;
-  description: string;
-  sideEffectClass: SideEffectClass;
-  capabilities?: string[];
-};
 
 type ToolRow = {
   wireName: string;
@@ -45,23 +48,6 @@ type ToolsPayload = {
   skillCount: number;
   wireNaming: string;
 };
-
-const SIDE_EFFECT_TONES: Record<SideEffectClass, string> = {
-  read: 'bg-bg text-ink-2 border border-hair',
-  write_workspace: 'bg-accent-soft text-accent-deep border border-accent',
-  write_external: 'bg-warn/30 text-ink border border-warn',
-  irreversible: 'bg-energy-soft text-energy-deep border border-energy',
-};
-
-function SideEffectBadge({ cls }: { cls: SideEffectClass }) {
-  return (
-    <span
-      className={`shrink-0 px-[8px] py-[3px] font-mono text-[10.5px] uppercase tracking-[0.06em] ${SIDE_EFFECT_TONES[cls]}`}
-    >
-      {cls.replace(/_/g, ' ')}
-    </span>
-  );
-}
 
 type Read<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -192,7 +178,7 @@ export default async function SkillsCatalogPage({
   const session = await requireSession();
 
   const [catalog, tools] = await Promise.all([
-    load<{ items: SkillRow[] }>('/v1/skills', session),
+    load<{ items: SkillRow[] }>(SKILL_CATALOG_ROUTE, session),
     load<ToolsPayload>('/v1/tools', session),
   ]);
 
@@ -269,6 +255,18 @@ export default async function SkillsCatalogPage({
         <h2 className="m-0 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
           Skills — the catalog
         </h2>
+
+        <p className="m-0 max-w-[900px] text-[12.5px] leading-[1.55] text-muted">
+          This page is the catalog&rsquo;s only home. A lifecycle scope that adds its own skills —
+          an org template or a project — writes them in{' '}
+          <Link
+            href={`/orgs/${slug}/lifecycle-templates`}
+            className="text-ink underline underline-offset-2"
+          >
+            Lifecycle templates
+          </Link>
+          , whose editor keeps a Custom skills tab and links back here for the stock list.
+        </p>
 
         {!catalog.ok ? (
           <Unavailable title="Skill catalog" message={catalog.message} />

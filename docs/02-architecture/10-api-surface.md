@@ -92,6 +92,10 @@ GitHub *App* installation:
 | `/v1/skills` | GET | Global stock-skill catalog (read-only). |
 | `/v1/tools` | GET | Per-agent-kind tool surface: the skills an agent kind actually sees after read-only filtering and wire-name sanitization. |
 
+Both reads are rendered by one page, `/orgs/:slug/skills` ("Skills and tools"): it is the only
+place the stock catalog is listed in the UI. The lifecycle editor authors a scope's own custom
+skills (the `custom-skills` rows above) and links to that page instead of re-rendering the catalog.
+
 ## Gas City (admin reads and the human mailbox)
 
 | Endpoint | Method | Purpose |

@@ -1,13 +1,8 @@
 import { api, apiOr404 } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { Card, Label, PageHead, Tile } from '@/components/ui';
-
-interface SkillRow {
-  name: string;
-  description: string;
-  sideEffectClass: 'read' | 'write_workspace' | 'write_external' | 'irreversible';
-  capabilities?: string[];
-}
+import { SideEffectBadge } from '@/components/side-effect-badge';
+import { loadSkillCatalog } from '@/lib/skill-catalog';
 
 interface AgentRow {
   kind?: string;
@@ -37,11 +32,11 @@ export default async function AgentsPage({
       `/v1/orgs/${slug}/projects/${projectSlug}/lifecycle`,
       { session },
     ),
-    api<{ items: SkillRow[] }>(`/v1/skills`, { session }),
+    loadSkillCatalog(session),
   ]);
 
   const agents = lc.parsed.agents ?? {};
-  const skillsByName = new Map(catalog.items.map((s) => [s.name, s]));
+  const skillsByName = new Map(catalog.map((s) => [s.name, s]));
   const agentEntries = Object.entries(agents);
   const totalSkills = agentEntries.reduce(
     (sum, [, a]) => sum + (a.skills?.length ?? 0),
@@ -208,23 +203,6 @@ export default async function AgentsPage({
         })}
       </ul>
     </main>
-  );
-}
-
-function SideEffectBadge({ cls }: { cls: SkillRow['sideEffectClass'] }) {
-  const tone = {
-    read: 'bg-bg text-ink-2 border border-hair',
-    write_workspace: 'bg-accent-soft text-accent-deep border border-accent',
-    write_external: 'bg-warn/20 text-ink border border-warn',
-    irreversible: 'bg-energy-soft text-energy-deep border border-energy',
-  }[cls];
-  const label = cls.replace(/_/g, ' ');
-  return (
-    <span
-      className={`shrink-0 px-[8px] py-[3px] font-mono text-[10.5px] uppercase tracking-[0.06em] ${tone}`}
-    >
-      {label}
-    </span>
   );
 }
 

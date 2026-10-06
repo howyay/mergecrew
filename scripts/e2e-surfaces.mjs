@@ -238,6 +238,16 @@ async function main() {
     templatesPage.status === 200,
     `HTTP ${templatesPage.status} → ${templatesPage.url}`,
   );
+  // The editor authors, the catalog page lists (#341): the tab that used to
+  // re-render the whole stock catalog is now the scope's own custom skills.
+  const customSkillsTab = templatesPage.body.includes('Custom skills');
+  const editorLinksToCatalog = templatesPage.body.includes('Skills and tools');
+  check(
+    'templates',
+    'lifecycle editor keeps custom skills and links to the catalog instead of re-listing it',
+    customSkillsTab,
+    `Custom skills tab ${customSkillsTab ? 'rendered' : 'MISSING'}${editorLinksToCatalog ? ', catalog link in the editor bundle' : ''}`,
+  );
   // The stock catalog — and the city formula each template becomes — is rendered
   // where a template is actually chosen: a project's lifecycle page. The org page
   // above is the YAML editor for the org-level default template.
@@ -491,6 +501,23 @@ async function main() {
   const skillsPage = await webGet(`/orgs/${ORG}/skills`);
   if (skillsPage.status === 200) {
     check('tools', 'skills page renders as tools + skills', /Tools/i.test(skillsPage.body), 'HTTP 200');
+    // The catalog lives on exactly one page. If it is listed anywhere else the
+    // two copies drift — one of them spent a while claiming ~25 skills.
+    const catalogSection = skillsPage.body.includes('the catalog');
+    const pointsAtAuthoring = /Lifecycle templates/.test(skillsPage.body);
+    check(
+      'tools',
+      'skills page is the catalog and says where custom skills are authored',
+      catalogSection && pointsAtAuthoring,
+      `catalog section ${catalogSection ? 'present' : 'MISSING'}, authoring link ${pointsAtAuthoring ? 'present' : 'MISSING'}`,
+    );
+    const listed = (skillsPage.body.match(/repo\.read_file|deploy\.prod|tracker\.list_issues/g) || []).length;
+    check(
+      'tools',
+      'the catalog page lists the stock skills',
+      listed >= 3,
+      `${listed} known skill names rendered`,
+    );
   } else {
     info('tools', 'skills page renders', `HTTP ${skillsPage.status} → ${skillsPage.url}`);
   }

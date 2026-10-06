@@ -2,17 +2,12 @@ import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
 import { Card, PageHead } from '@/components/ui';
+import { SKILL_CATALOG_ROUTE, type SkillRow } from '@/lib/skill-catalog';
 import {
   LifecycleEditor,
   type ParsedConfig,
 } from '@/components/lifecycle/lifecycle-editor';
 import type { LifecycleScope } from '@/components/lifecycle/scope';
-
-interface SkillRow {
-  name: string;
-  description: string;
-  sideEffectClass: string;
-}
 
 export default async function OrgLifecycleTemplatePage({
   params,
@@ -26,7 +21,7 @@ export default async function OrgLifecycleTemplatePage({
       `/v1/orgs/${slug}/lifecycle-templates/default`,
       { session },
     ),
-    api<{ items: SkillRow[] }>('/v1/skills', { session }),
+    api<{ items: SkillRow[] }>(SKILL_CATALOG_ROUTE, { session }),
     hasRole(slug, session, 'admin'),
   ]);
 
