@@ -92,7 +92,7 @@ GitHub *App* installation:
 | `/v1/skills` | GET | Global stock-skill catalog (read-only). |
 | `/v1/tools` | GET | Per-agent-kind tool surface: the skills an agent kind actually sees after read-only filtering and wire-name sanitization. |
 
-## Gas City (admin reads)
+## Gas City (admin reads and the human mailbox)
 
 | Endpoint | Method | Purpose |
 |---|---|---|
@@ -102,6 +102,15 @@ GitHub *App* installation:
 | `/v1/orgs/:slug/admin/city/tenant/:orgSlug` | GET | The rig an organization maps to, and whether the city holds it. A missing rig is reported (`known: false`), not answered with 404. |
 | `/v1/orgs/:slug/admin/city/projects` | GET | Every project bound to its rig, with a reason and a fix for the unmapped ones. |
 | `/v1/orgs/:slug/admin/city/usage` | GET | Today's invocations, tokens and wall time with the city's own cost estimate, labelled as an estimate. |
+| `/v1/orgs/:slug/admin/city/mail` | GET | The city mailbox addressed to `human`: `{items, total, unread}`. This is how an agent asks a person a question and waits for the answer. |
+| `/v1/orgs/:slug/admin/city/mail/:messageId/reply` | POST | Answer a message (`{body}`, ≤4000 characters). The reply rejoins the asking thread and the message is marked read. |
+| `/v1/orgs/:slug/admin/city/mail/:messageId/read` | POST | Mark read. |
+| `/v1/orgs/:slug/admin/city/mail/:messageId/mark-unread` | POST | Mark unread again. |
+| `/v1/orgs/:slug/admin/city/mail/:messageId/archive` | POST | Archive. One-way: the city has no unarchive route, so an archived message leaves the mailbox for good. |
+
+The mailbox writes need `operator` or above, like the approval resolve route. The mailbox read
+needs the bridge token (`CITY_BRIDGE_TOKEN`) on top of that, because mail is private even on a
+LAN — see [Gas City integration](../03-infrastructure/08-gas-city-integration.md).
 
 ## Runs
 

@@ -68,6 +68,7 @@ Concrete feature inventory grouped by surface. Each feature has a brief descript
 | Per-transition gate config: `auto` / `notify` / `require-approval` | All | Implemented |
 | Approval inbox in the web UI | All | Implemented |
 | Idea gate: an idea waits for a human decision before it can seed a run | Theo | Implemented |
+| City mailbox in the inbox: an agent that stops to ask a person, answered from the page (reply / read / archive) | Theo | Implemented |
 | Approval via Slack DM action buttons | Theo | Planned |
 | Approval via email | Theo | Planned |
 | Heuristic auto-escalation (auth, payments, migrations) | Mira | In progress |

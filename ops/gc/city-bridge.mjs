@@ -9,36 +9,67 @@
  *
  * Rebinding the supervisor is not an option: it is where the operator's agents
  * live, it exposes no bind flag, and the same port serves write routes
- * (`bead/{id}/close`, `mail/{id}/reply`, `session/{id}/respond`) that must never
- * be reachable from a container network. So this bridge listens on the host's
+ * (`bead/{id}/close`, `mail`, `session/{id}/respond`) that must never be
+ * reachable from a container network. So this bridge listens on the host's
  * default-route address — the one `host.containers.internal` resolves to, see
- * `docs/03-infrastructure/08-gas-city-integration.md` — and forwards **only**
- * the read paths the product actually asks for.
+ * `docs/03-infrastructure/08-gas-city-integration.md` — and forwards a short,
+ * named list of paths.
+ *
+ * Two classes of path, and the difference matters:
+ *
+ *   reads   `status`, `agents`, `sessions`, `usage`, `rigs` — open to whoever can
+ *           reach the bridge, which is what the product's city pages need.
+ *   the mail `mail` (read) plus `mail/<id>/reply|read|mark-unread|archive`
+ *           (write) — the agents' messages to a human. This bridge binds the
+ *           host's LAN address, so these paths stay closed unless the caller
+ *           presents `CITY_BRIDGE_TOKEN` in the `x-city-bridge-token` header.
+ *           With no token configured the mailbox is closed, not open.
  *
  * Usage:
  *   node ops/gc/city-bridge.mjs                    # bind auto, 8373 → 127.0.0.1:8372
  *   node ops/gc/city-bridge.mjs --check            # probe the supervisor once, exit 0/1
  *   node ops/gc/city-bridge.mjs --bind 10.0.0.119  # name the address explicitly
+ *   CITY_BRIDGE_TOKEN=… node ops/gc/city-bridge.mjs  # open the mailbox to the API
  *
  * Flags: --bind <auto|ADDR|0.0.0.0>  --port <n>  --target <url>  --city <name>
- *        --allow <a,b,...>  --check  --quiet  --verbose  --help
+ *        --allow <a,b,...>  --writes <a,b,...>  --token <secret>
+ *        --check  --quiet  --verbose  --help
  *
  * Exit codes: 0 ok · 1 the supervisor did not answer (--check) · 2 bad usage.
  */
 import http from 'node:http';
 import dgram from 'node:dgram';
+import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 export const DEFAULT_TARGET = 'http://127.0.0.1:8372';
 export const DEFAULT_PORT = 8373;
 export const DEFAULT_CITY = 'gascity';
 
+/** The header a caller presents to reach the mailbox. */
+export const TOKEN_HEADER = 'x-city-bridge-token';
+
 /**
  * Exactly the resources `CityService` reads (apps/api/src/modules/city/city.service.ts):
- * `status`, `agents`, `sessions`, `usage`, `rigs`. Everything else the supervisor
- * serves — including every write route — is refused by the bridge.
+ * `status`, `agents`, `sessions`, `usage`, `rigs`, `mail`. Everything else the
+ * supervisor serves — including every write route but the four mail ones below —
+ * is refused by the bridge.
  */
-export const DEFAULT_ALLOW = ['status', 'agents', 'sessions', 'usage', 'rigs'];
+export const DEFAULT_ALLOW = ['status', 'agents', 'sessions', 'usage', 'rigs', 'mail'];
+
+/**
+ * Reads that are somebody's private correspondence rather than a counter. The
+ * mailbox holds what the city's agents said to a human, so it needs the token
+ * even though it is a read.
+ */
+export const PRIVATE_READS = new Set(['mail']);
+
+/**
+ * The only writes this bridge will carry: answering a message, and putting it
+ * away. There is deliberately no route to *create* mail, close a bead or answer
+ * a session prompt — those stay on the host, where `gc` is.
+ */
+export const DEFAULT_WRITES = ['mail/:id/reply', 'mail/:id/read', 'mail/:id/mark-unread', 'mail/:id/archive'];
 
 /** `/v0/city/<city>/<resource>` → `{ city, resource }`, or null. */
 export function readTarget(pathname, allow = DEFAULT_ALLOW) {
@@ -47,6 +78,50 @@ export function readTarget(pathname, allow = DEFAULT_ALLOW) {
   const [, city, resource] = match;
   if (!allow.includes(resource)) return null;
   return { city, resource };
+}
+
+/**
+ * `/v0/city/<city>/mail/<id>/<action>` → `{ city, id, action }`, or null.
+ *
+ * The id is held to a conservative character set on purpose: an encoded slash in
+ * an id would travel through this proxy untouched and be decoded by whatever
+ * reads it next, which is exactly how a narrow allowlist stops being narrow.
+ */
+export function writeTarget(pathname, writes = DEFAULT_WRITES) {
+  const match = /^\/v0\/city\/([^/]+)\/mail\/([A-Za-z0-9._-]{1,128})\/([a-z-]+)$/.exec(pathname);
+  if (!match) return null;
+  const [, city, id, action] = match;
+  if (!writes.includes(`mail/:id/${action}`)) return null;
+  return { city, id, action };
+}
+
+/** Constant-time token check. No configured token means nothing is accepted. */
+function tokenAccepted(headers, secret) {
+  if (!secret) return false;
+  const raw = headers?.[TOKEN_HEADER];
+  const given = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof given !== 'string' || given.length === 0) return false;
+  const a = Buffer.from(given, 'utf8');
+  const b = Buffer.from(secret, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+const HOST_ONLY_HINT = 'Everything else stays on the host: reach it with the city CLI.';
+
+function readDenied(allow) {
+  return `city-bridge forwards only ${allow.map((r) => `/v0/city/<city>/${r}`).join(', ')}.`;
+}
+
+function writeDenied(writes) {
+  const listed = writes.map((w) => `/v0/city/<city>/${w.replace(':id', '<id>')}`).join(', ');
+  return `city-bridge writes only ${listed}.`;
+}
+
+function closedDenied(resource, secret) {
+  const why = secret
+    ? `the caller did not present a matching ${TOKEN_HEADER} header.`
+    : `the bridge has no CITY_BRIDGE_TOKEN, so ${resource} stays closed.`;
+  return `${resource} is not open to the network: ${why}`;
 }
 
 /** The address containers reach the host on: the one the default route uses. */
@@ -89,12 +164,17 @@ export async function bindAddresses(bind) {
   return route ? [route, '127.0.0.1'] : ['127.0.0.1'];
 }
 
-/** Headers worth forwarding: everything but hop-by-hop and the client's auth. */
+/**
+ * Headers worth forwarding: everything but hop-by-hop headers, the caller's
+ * credentials — the bridge token is between the caller and this process, and the
+ * supervisor needs no `authorization` — and the `host` it was addressed with.
+ */
 function forwardHeaders(headers) {
   const out = {};
   for (const [key, value] of Object.entries(headers)) {
     const name = key.toLowerCase();
     if (name === 'host' || name === 'connection' || name === 'transfer-encoding') continue;
+    if (name === 'authorization' || name === TOKEN_HEADER) continue;
     if (name === 'content-length' && value === '0') continue;
     if (value !== undefined) out[key] = value;
   }
@@ -119,28 +199,16 @@ export async function startBridge({
   target = DEFAULT_TARGET,
   city = DEFAULT_CITY,
   allow = DEFAULT_ALLOW,
+  writes = DEFAULT_WRITES,
+  token = process.env.CITY_BRIDGE_TOKEN ?? '',
   log = () => {},
 } = {}) {
   const upstream = new URL(target.endsWith('/') ? target.slice(0, -1) : target);
   const addresses = await bindAddresses(bind);
+  const secret = String(token ?? '').trim();
 
-  const handle = (req, res) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'bridge'}`);
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      log(`${405} ${req.method} ${url.pathname} (only reads are bridged)`);
-      return reply(res, 405, 'city-bridge only forwards reads (GET/HEAD).');
-    }
-    const read = readTarget(url.pathname, allow);
-    if (!read) {
-      log(`403 ${req.method} ${url.pathname} (not on the read allowlist)`);
-      return reply(
-        res,
-        403,
-        `city-bridge forwards only ${allow.map((r) => `/v0/city/<city>/${r}`).join(', ')}.\n` +
-          'Write routes stay on the host: reach them with the city CLI.',
-      );
-    }
-
+  /** Pipe one accepted request upstream. The method and body are never rewritten. */
+  const forward = (req, res, url) => {
     const request = http.request(
       {
         protocol: upstream.protocol,
@@ -165,6 +233,43 @@ export async function startBridge({
     req.pipe(request);
   };
 
+  const handle = (req, res) => {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'bridge'}`);
+
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const read = readTarget(url.pathname, allow);
+      if (!read) {
+        log(`403 ${req.method} ${url.pathname} (not on the read allowlist)`);
+        return reply(res, 403, `${readDenied(allow)}\n${HOST_ONLY_HINT}`);
+      }
+      if (PRIVATE_READS.has(read.resource) && !tokenAccepted(req.headers, secret)) {
+        log(`403 ${req.method} ${url.pathname} (private read, no token)`);
+        return reply(res, 403, closedDenied(read.resource, secret));
+      }
+      return forward(req, res, url);
+    }
+
+    if (req.method === 'POST') {
+      const write = writeTarget(url.pathname, writes);
+      if (!write) {
+        if (readTarget(url.pathname, allow)) {
+          log(`405 POST ${url.pathname} (that path is a read)`);
+          return reply(res, 405, 'city-bridge forwards reads (GET/HEAD) and the mailbox writes (POST).');
+        }
+        log(`403 POST ${url.pathname} (not on the write allowlist)`);
+        return reply(res, 403, `${writeDenied(writes)}\n${HOST_ONLY_HINT}`);
+      }
+      if (!tokenAccepted(req.headers, secret)) {
+        log(`403 POST ${url.pathname} (write, no token)`);
+        return reply(res, 403, closedDenied(`mail/${write.action}`, secret));
+      }
+      return forward(req, res, url);
+    }
+
+    log(`405 ${req.method} ${url.pathname} (only reads and the mailbox writes)`);
+    return reply(res, 405, 'city-bridge forwards reads (GET/HEAD) and the mailbox writes (POST).');
+  };
+
   const servers = [];
   for (const address of addresses) {
     const server = http.createServer(handle);
@@ -177,7 +282,8 @@ export async function startBridge({
   }
   log(
     `listening on ${servers.map(({ address, port: bound }) => `${address}:${bound}`).join(', ')} → ${upstream.origin}` +
-      ` (reads: ${allow.join(', ')}; city ${city})`,
+      ` (reads: ${allow.join(', ')}; writes: ${writes.join(', ')}; city ${city};` +
+      ` mailbox ${secret ? 'token-gated' : 'closed, no CITY_BRIDGE_TOKEN'})`,
   );
 
   return {
@@ -211,16 +317,21 @@ export async function checkSupervisor({ target = DEFAULT_TARGET, city = DEFAULT_
   }
 }
 
-const USAGE = `city-bridge — read-only bridge to the host's Gas City supervisor
+const USAGE = `city-bridge — bridge from the containerised stack to the host's Gas City supervisor
 
   node ops/gc/city-bridge.mjs [--bind auto] [--port 8373]
                              [--target http://127.0.0.1:8372] [--city gascity]
-                             [--allow status,agents,sessions,usage,rigs]
-                             [--check] [--quiet] [--verbose]
+                             [--allow status,agents,sessions,usage,rigs,mail]
+                             [--writes mail/:id/reply,mail/:id/read,mail/:id/mark-unread,mail/:id/archive]
+                             [--token <secret>] [--check] [--quiet] [--verbose]
 
 --bind auto  binds the host's default-route address plus 127.0.0.1, because that
              is the address a container reaches the host on
              (host.containers.internal → that address, verified on podman/pasta).
+--token      the shared secret the mailbox needs. Reads of \`mail\` and all four
+             mail writes are refused without it, and with no token configured the
+             mailbox is closed rather than open. Also read from CITY_BRIDGE_TOKEN;
+             never logged.
 --check      probes the supervisor once and exits 0 (reachable) or 1 (not), so a
              unit or a gate can call it without starting a proxy.`;
 
@@ -231,6 +342,8 @@ function parseArgs(argv) {
     target: process.env.CITY_BRIDGE_TARGET ?? DEFAULT_TARGET,
     city: process.env.CITY_BRIDGE_CITY ?? DEFAULT_CITY,
     allow: DEFAULT_ALLOW,
+    writes: DEFAULT_WRITES,
+    token: process.env.CITY_BRIDGE_TOKEN ?? '',
     check: false,
     quiet: false,
     verbose: false,
@@ -262,6 +375,15 @@ function parseArgs(argv) {
           .map((entry) => entry.trim())
           .filter(Boolean);
         break;
+      case '--writes':
+        options.writes = value()
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+        break;
+      case '--token':
+        options.token = value();
+        break;
       case '--check':
         options.check = true;
         break;
@@ -283,6 +405,7 @@ function parseArgs(argv) {
     throw new Error(`--port must be a port number, got ${options.port}`);
   }
   if (options.allow.length === 0) throw new Error('--allow cannot be empty');
+  if (options.writes.length === 0) throw new Error('--writes cannot be empty');
   return options;
 }
 

@@ -2,6 +2,8 @@ import {
   CITY_STATUS_SUMMARY_FIELDS,
   CityService,
   EMPTY_CITY_USAGE,
+  projectMail,
+  projectMailMessage,
   projectStatus,
   projectUsage,
   rigNameForOrg,
@@ -558,5 +560,222 @@ describe('CityController usage', () => {
     const controller = new CityController(city, {} as unknown as TenantContextService);
 
     await expect(controller.usage()).resolves.toMatchObject({ available: true, recording: true });
+  });
+});
+
+describe('projectMail', () => {
+  // The shape the supervisor answered on 2026-10-06, trimmed to two messages.
+  const live = {
+    items: [
+      {
+        id: 'gc-881',
+        from: '',
+        to: 'human',
+        subject: 'Re: Dolt health advisory [MEDIUM]',
+        body: 'MergeCrew probe: reply contract',
+        created_at: '2026-10-06T02:05:11Z',
+        read: true,
+        thread_id: 'thread-1',
+        rig: 'mergecrew',
+      },
+      {
+        id: 'gc-844',
+        from: 'human',
+        to: 'human',
+        subject: 'Dolt backup: 1/2 databases failed to sync [MEDIUM]',
+        body: 'Operator review required before forcing cleanup',
+        created_at: '2026-10-06T01:28:00Z',
+        read: false,
+      },
+    ],
+    total: 2,
+  };
+
+  it('normalizes the messages the city asks a human about', () => {
+    const box = projectMail(live);
+
+    expect(box.total).toBe(2);
+    expect(box.unread).toBe(1);
+    expect(box.items[0]).toEqual({
+      id: 'gc-881',
+      from: '',
+      to: 'human',
+      subject: 'Re: Dolt health advisory [MEDIUM]',
+      body: 'MergeCrew probe: reply contract',
+      createdAt: '2026-10-06T02:05:11Z',
+      read: true,
+      threadId: 'thread-1',
+      rig: 'mergecrew',
+    });
+    expect(box.items[1]).toMatchObject({ id: 'gc-844', read: false, threadId: null, rig: null });
+  });
+
+  it('drops a message that cannot be answered', () => {
+    const box = projectMail({ items: [{ subject: 'no id' }, { id: '  ' }, live.items[1]] });
+    expect(box.items.map((item) => item.id)).toEqual(['gc-844']);
+    expect(box.total).toBe(1);
+  });
+
+  it('answers with an empty mailbox when there is nothing to read', () => {
+    expect(projectMail(undefined)).toEqual({ items: [], total: 0, unread: 0 });
+    expect(projectMail({ items: 'not a list', total: 12 })).toMatchObject({ items: [], total: 12, unread: 0 });
+  });
+});
+
+describe('projectMailMessage', () => {
+  it('keeps the thread a reply has to join, and tolerates a bare payload', () => {
+    expect(projectMailMessage({ id: 'gc-1', thread_id: 'thread-9' })).toMatchObject({
+      id: 'gc-1',
+      threadId: 'thread-9',
+      read: false,
+      createdAt: null,
+    });
+    expect(projectMailMessage({ body: 'no id' })).toBeNull();
+  });
+});
+
+describe('CityService mail', () => {
+  const originalFetch = global.fetch;
+  const originalToken = process.env.CITY_BRIDGE_TOKEN;
+  const originalTimeout = process.env.CITY_API_TIMEOUT_MS;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    if (originalToken === undefined) delete process.env.CITY_BRIDGE_TOKEN;
+    else process.env.CITY_BRIDGE_TOKEN = originalToken;
+    if (originalTimeout === undefined) delete process.env.CITY_API_TIMEOUT_MS;
+    else process.env.CITY_API_TIMEOUT_MS = originalTimeout;
+  });
+
+  it('reads the mailbox and carries the bridge token', async () => {
+    process.env.CITY_BRIDGE_TOKEN = 'bridge-secret';
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [{ id: 'gc-844', read: false }], total: 1 }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const box = await new CityService().mail();
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v0/city/gascity/mail');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toEqual({ 'x-city-bridge-token': 'bridge-secret' });
+    expect(box.unread).toBe(1);
+  });
+
+  it('sends no token when none is configured, and reports the bridge refusal as one', async () => {
+    delete process.env.CITY_BRIDGE_TOKEN;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => 'mail is not open to the network: the bridge has no CITY_BRIDGE_TOKEN, so mail stays closed.',
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(new CityService().mail()).rejects.toThrow(/refused the read/);
+    await expect(new CityService().mail()).rejects.toThrow(/CITY_BRIDGE_TOKEN/);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toEqual({});
+  });
+
+  it('answers a message and then puts the unread flag down', async () => {
+    process.env.CITY_BRIDGE_TOKEN = 'bridge-secret';
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'gc-900', reply_to: 'gc-844', thread_id: 'thread-1', body: 'handled' }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'read' }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const created = await new CityService().replyToMail('gc-844', 'Handled — the backup is green again.');
+
+    expect(created).toMatchObject({ id: 'gc-900', threadId: 'thread-1' });
+    const [replyUrl, replyInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(replyUrl)).toContain('/v0/city/gascity/mail/gc-844/reply');
+    expect(replyInit.method).toBe('POST');
+    expect(replyInit.headers).toMatchObject({
+      'content-type': 'application/json',
+      'x-gc-request': 'mergecrew-inbox',
+      'x-city-bridge-token': 'bridge-secret',
+    });
+    expect(JSON.parse(String(replyInit.body))).toEqual({ body: 'Handled — the backup is green again.' });
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/v0/city/gascity/mail/gc-844/read');
+  });
+
+  it('keeps the reply when the unread flag could not be cleared', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'gc-901', thread_id: 'thread-1' }) })
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'nope' });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(new CityService().replyToMail('gc-844', 'handled')).resolves.toMatchObject({ id: 'gc-901' });
+  });
+
+  it('reports an archive that did not land instead of pretending it did', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: async () => '{"title":"Unprocessable Entity","detail":"unknown message"}',
+    }) as unknown as typeof fetch;
+
+    await expect(new CityService().archiveMail('gc-844')).rejects.toThrow(/city write "mail\/gc-844\/archive" did not complete/);
+  });
+
+  it('names the one action that cannot be retried safely when a write times out', async () => {
+    process.env.CITY_API_TIMEOUT_MS = '10';
+    global.fetch = jest.fn(
+      (_url: unknown, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(new CityService().markMailRead('gc-844')).rejects.toThrow(/may or may not have landed/);
+  });
+
+  it('reports a read the supervisor answered without a status as the city being gone', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('fetch failed')) as unknown as typeof fetch;
+    await expect(new CityService().mail()).rejects.toThrow(/not reachable/);
+  });
+});
+
+describe('CityController mail', () => {
+  const city = {
+    mail: async () => ({ items: [{ id: 'gc-1' }], total: 1, unread: 1 }),
+    replyToMail: async (id: string, body: string) => ({ id: 'gc-900', body, threadId: `thread-of-${id}` }),
+    markMailRead: async (id: string) => ({ id, status: 'read' }),
+    markMailUnread: async (id: string) => ({ id, status: 'unread' }),
+    archiveMail: async (id: string) => ({ id, status: 'archived' }),
+  } as unknown as CityService;
+
+  const controller = () => new CityController(city, {} as unknown as TenantContextService);
+
+  it('answers with the mailbox the service read', async () => {
+    await expect(controller().mail()).resolves.toMatchObject({ total: 1, unread: 1 });
+  });
+
+  it('trims a reply before it sends it', async () => {
+    await expect(controller().reply('gc-844', { body: '  handled  ' })).resolves.toMatchObject({
+      body: 'handled',
+      threadId: 'thread-of-gc-844',
+    });
+  });
+
+  it('refuses an empty reply and an id that is not a message id', async () => {
+    await expect(controller().reply('gc-844', { body: '   ' })).rejects.toThrow(/a reply needs a body/);
+    await expect(controller().reply('gc-844', {})).rejects.toThrow(/a reply needs a body/);
+    await expect(controller().reply('../../admin', { body: 'hi' })).rejects.toThrow(/not a city message id/);
+    await expect(controller().archive('gc/../1')).rejects.toThrow(/not a city message id/);
+  });
+
+  it('carries read, unread and archive through', async () => {
+    await expect(controller().markRead('gc-1')).resolves.toEqual({ id: 'gc-1', status: 'read' });
+    await expect(controller().markUnread('gc-1')).resolves.toEqual({ id: 'gc-1', status: 'unread' });
+    await expect(controller().archive('gc-1')).resolves.toEqual({ id: 'gc-1', status: 'archived' });
+  });
+
+  it('refuses a reply longer than a message to an agent', async () => {
+    await expect(controller().reply('gc-1', { body: 'x'.repeat(4_001) })).rejects.toThrow(/limited to 4000 characters/);
   });
 });

@@ -31,7 +31,14 @@ export class IdeasService {
     const t = this.tenant.require();
     const rows = await this.prisma.withTenant(t.organizationId, (tx) =>
       tx.intentInboxItem.findMany({
-        where: { organizationId: t.organizationId, status: IDEA_STATUS_QUEUED },
+        where: {
+          organizationId: t.organizationId,
+          status: IDEA_STATUS_QUEUED,
+          // An idea filed against an archived project has no run to seed, so it
+          // is not a decision that can be carried out. Approving it would look
+          // like a green light and quietly do nothing.
+          project: { deletedAt: null },
+        },
         orderBy: { createdAt: 'asc' },
         include: { project: { select: { slug: true, name: true } } },
       }),
