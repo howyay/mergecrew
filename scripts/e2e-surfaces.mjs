@@ -14,6 +14,8 @@
  *   MERGECREW_E2E_WEB      web base            (default http://127.0.0.1:3100)
  *   MERGECREW_E2E_ORG      org slug to check   (default demo)
  *   MERGECREW_E2E_API_KEY  mc_* API key        (default the local-stack e2e key)
+ *   MERGECREW_E2E_CITY_URL supervisor, on the host (default http://127.0.0.1:8372)
+ *   MERGECREW_E2E_CITY     city name           (default gascity)
  *
  * Exit code is 1 when any check fails. Role-gated routes (403) and pages that
  * need a session (sign-in redirect) are reported as `info`, not as failures:
@@ -69,6 +71,27 @@ function asList(body) {
 
 function apiMessage(body) {
   return body?.error?.message ?? body?.message ?? '';
+}
+
+/**
+ * Where the Gas City supervisor listens when this script runs on the host. The
+ * API container cannot reach it (it binds loopback), so asking from here is how
+ * a run tells "the supervisor is down" apart from "the container cannot see it".
+ */
+const HOST_CITY = (
+  process.env.MERGREW_E2E_CITY_URL ?? 'http://127.0.0.1:8372'
+).replace(/\/+$/, '');
+const CITY = process.env.MERGREW_E2E_CITY ?? 'gascity';
+
+async function supervisorAnswersOnHost() {
+  try {
+    const res = await fetch(`${HOST_CITY}/v0/city/${CITY}/usage`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 /** 403 means "this credential is not allowed"; that is a fact, not a bug. */
@@ -155,16 +178,24 @@ async function main() {
     }
   }
   const templatesPage = await webGet(`/orgs/${ORG}/lifecycle-templates`);
-  if (templatesPage.status === 200) {
-    check('templates', 'templates page renders', true, 'HTTP 200');
+  check(
+    'templates',
+    'org template page renders',
+    templatesPage.status === 200,
+    `HTTP ${templatesPage.status} → ${templatesPage.url}`,
+  );
+  // The stock catalog — and the city formula each template becomes — is rendered
+  // where a template is actually chosen: a project's lifecycle page. The org page
+  // above is the YAML editor for the org-level default template.
+  if (slugs.length > 0) {
+    const pickerPage = await webGet(`/orgs/${ORG}/projects/${slugs[0]}/lifecycle`);
+    const rendered = pickerPage.body.includes('mol-mc-');
     check(
       'templates',
-      'page shows the city formula',
-      templatesPage.body.includes('city formula') || templatesPage.body.includes('mol-mc-'),
-      templatesPage.body.includes('mol-mc-') ? 'mol-mc-* rendered' : 'no formula text in HTML',
+      'project lifecycle page renders the stock picker with its formulas',
+      pickerPage.status === 200 && rendered,
+      `HTTP ${pickerPage.status}${rendered ? ' — mol-mc-* rendered' : ' — no formula text in HTML'}`,
     );
-  } else {
-    info('templates', 'templates page renders', `HTTP ${templatesPage.status} → ${templatesPage.url}`);
   }
 
   // ── costs (database ledger + Gas City usage) ─────────────────────────────
@@ -194,15 +225,21 @@ async function main() {
     }
   } else if (usage.status === 403) {
     info('costs', 'GET city usage', `HTTP 403 for this credential — ${apiMessage(usage.json)}`);
-  } else if (/not reachable/i.test(apiMessage(usage.json))) {
-    // Not a code failure: this is the deployment shape. `gc supervisor run`
-    // binds 127.0.0.1 on the host (it has no bind flag), so a containerised API
-    // reaches only its own loopback unless CITY_API_URL points at an address the
-    // container can route to. The page degrades to its "could not be read"
-    // note and the ledger stands alone, which is what the checks above prove.
-    info('costs', 'GET city usage', `HTTP ${usage.status}, supervisor unreachable from this container — set CITY_API_URL to an address the API container can reach`);
   } else {
-    info('costs', 'GET city usage', `HTTP ${usage.status} — ${apiMessage(usage.json)}`);
+    // A 500 here is the deployment shape, not a defect in the route: the API
+    // answers with a generic body, so ask the host directly. `gc supervisor run`
+    // binds 127.0.0.1 and has no flag to change it, so a containerised API only
+    // ever reaches its own loopback unless CITY_API_URL points at an address the
+    // container can route to. The page then keeps the ledger and says the usage
+    // panel could not be read, which the checks below prove.
+    const hostAnswers = await supervisorAnswersOnHost();
+    info(
+      'costs',
+      'GET city usage',
+      hostAnswers
+        ? `HTTP ${usage.status} — the supervisor answers on the host (${HOST_CITY}) but not from the API container: it binds 127.0.0.1, so point CITY_API_URL at an address the container can reach`
+        : `HTTP ${usage.status} — ${apiMessage(usage.json)}`,
+    );
   }
   const costsPage = await webGet(`/orgs/${ORG}/costs`);
   if (costsPage.status === 200) {
