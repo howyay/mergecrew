@@ -78,6 +78,12 @@ export async function computeMetricsRollups(
   // so a project that had llm activity but no completed steps still
   // gets a row, and vice versa.
   // ────────────────────────────────────────────────────────────────────
+  // A finished run is `done`, not `completed`: that is the label in
+  // `DailyRunStatus` / `StepStatus` (`@mergecrew/domain`), and `daily_runs.status`
+  // is an enum, so comparing it to a label it does not have (`StepOutcome.kind`
+  // spells the same idea `completed`) fails the whole statement — which is how
+  // this job spent its life writing no rollup at all. The guard test
+  // `test/metrics-rollups-status.test.ts` holds every literal here to the enums.
   const projectInsert = Prisma.sql`
     with
     runs as (
@@ -86,7 +92,7 @@ export async function computeMetricsRollups(
         dr.project_id,
         count(*) filter (where dr.started_at >= ${start} and dr.started_at < ${end})       as runs_started,
         count(*) filter (where dr.finished_at >= ${start} and dr.finished_at < ${end}
-                              and dr.status = 'completed')                                  as runs_completed,
+                              and dr.status = 'done')                                       as runs_completed,
         count(*) filter (where dr.finished_at >= ${start} and dr.finished_at < ${end}
                               and dr.status = 'failed')                                     as runs_failed
       from daily_runs dr
@@ -99,7 +105,7 @@ export async function computeMetricsRollups(
         s.organization_id,
         dr.project_id,
         count(*)                                                                            as steps_run,
-        count(*) filter (where s.status = 'completed')                                      as steps_passed,
+        count(*) filter (where s.status = 'done')                                           as steps_passed,
         coalesce(percentile_cont(0.5) within group (
           order by extract(epoch from (s.finished_at - s.started_at)) * 1000.0
         ), 0)                                                                               as p50_ms,
@@ -189,7 +195,7 @@ export async function computeMetricsRollups(
         dr.organization_id,
         count(*) filter (where dr.started_at >= ${start} and dr.started_at < ${end})       as runs_started,
         count(*) filter (where dr.finished_at >= ${start} and dr.finished_at < ${end}
-                              and dr.status = 'completed')                                  as runs_completed,
+                              and dr.status = 'done')                                       as runs_completed,
         count(*) filter (where dr.finished_at >= ${start} and dr.finished_at < ${end}
                               and dr.status = 'failed')                                     as runs_failed
       from daily_runs dr
@@ -201,7 +207,7 @@ export async function computeMetricsRollups(
       select
         s.organization_id,
         count(*)                                                                            as steps_run,
-        count(*) filter (where s.status = 'completed')                                      as steps_passed,
+        count(*) filter (where s.status = 'done')                                           as steps_passed,
         coalesce(percentile_cont(0.5) within group (
           order by extract(epoch from (s.finished_at - s.started_at)) * 1000.0
         ), 0)                                                                               as p50_ms,
