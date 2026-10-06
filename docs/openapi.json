@@ -32,7 +32,16 @@
     "/v1/auth/whoami": {
       "get": {
         "operationId": "AuthController_whoami",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -72,7 +81,16 @@
     "/v1/orgs/{slug}": {
       "get": {
         "operationId": "OrgController_detail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -84,7 +102,16 @@
       },
       "patch": {
         "operationId": "OrgController_update",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -98,7 +125,16 @@
     "/v1/orgs/{slug}/members": {
       "get": {
         "operationId": "OrgController_members",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -110,7 +146,16 @@
       },
       "post": {
         "operationId": "OrgController_inviteMember",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -124,7 +169,24 @@
     "/v1/orgs/{slug}/members/{id}": {
       "patch": {
         "operationId": "OrgController_updateMember",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -136,7 +198,24 @@
       },
       "delete": {
         "operationId": "OrgController_removeMember",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -150,7 +229,16 @@
     "/v1/orgs/{slug}/onboarding": {
       "get": {
         "operationId": "OrgController_onboarding",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -164,7 +252,16 @@
     "/v1/orgs/{slug}/budget": {
       "get": {
         "operationId": "OrgController_budget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -176,7 +273,16 @@
       },
       "patch": {
         "operationId": "OrgController_updateBudget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -190,7 +296,16 @@
     "/v1/orgs/{slug}/spend-cap": {
       "get": {
         "operationId": "OrgController_spendCap",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -202,7 +317,16 @@
       },
       "patch": {
         "operationId": "OrgController_updateSpendCap",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -216,7 +340,16 @@
     "/v1/orgs/{slug}/concurrency-cap": {
       "get": {
         "operationId": "OrgController_concurrencyCap",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -228,7 +361,16 @@
       },
       "patch": {
         "operationId": "OrgController_updateConcurrencyCap",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -242,7 +384,40 @@
     "/v1/orgs/{slug}/audit-log": {
       "get": {
         "operationId": "OrgController_auditLog",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -256,7 +431,16 @@
     "/v1/orgs/{slug}/pause": {
       "post": {
         "operationId": "OrgController_pauseRuns",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -270,7 +454,16 @@
     "/v1/orgs/{slug}/resume": {
       "post": {
         "operationId": "OrgController_resumeRuns",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -284,7 +477,16 @@
     "/v1/orgs/{slug}/telemetry": {
       "get": {
         "operationId": "OrgController_telemetrySettings",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -296,7 +498,16 @@
       },
       "patch": {
         "operationId": "OrgController_updateTelemetry",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -310,7 +521,16 @@
     "/v1/orgs/{slug}/telemetry/recent": {
       "get": {
         "operationId": "OrgController_telemetryRecent",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -324,7 +544,16 @@
     "/v1/orgs/{slug}/evals/settings": {
       "get": {
         "operationId": "OrgController_evalsSettings",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -336,7 +565,16 @@
       },
       "patch": {
         "operationId": "OrgController_updateEvalsSettings",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -350,7 +588,16 @@
     "/v1/orgs/{slug}/runner-profile": {
       "get": {
         "operationId": "RunnerProfileController_get",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -362,7 +609,26 @@
       },
       "patch": {
         "operationId": "RunnerProfileController_update",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -402,7 +668,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}": {
       "get": {
         "operationId": "ProjectController_detail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -414,7 +689,16 @@
       },
       "patch": {
         "operationId": "ProjectController_update",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -428,7 +712,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/connect-repo": {
       "post": {
         "operationId": "ProjectController_connectRepo",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -440,7 +733,16 @@
       },
       "delete": {
         "operationId": "ProjectController_disconnectRepo",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -454,7 +756,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/installation-repos/{installationId}": {
       "get": {
         "operationId": "ProjectController_installationRepos",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -468,7 +779,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/deploy-targets": {
       "get": {
         "operationId": "ProjectController_deployTargets",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -480,7 +800,16 @@
       },
       "post": {
         "operationId": "ProjectController_upsertDeployTarget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -494,7 +823,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/deploy-targets/{kind}": {
       "delete": {
         "operationId": "ProjectController_deleteDeployTarget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -508,7 +854,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/secrets": {
       "get": {
         "operationId": "ProjectController_listSecrets",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -520,7 +875,16 @@
       },
       "post": {
         "operationId": "ProjectController_setSecret",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -534,7 +898,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/secrets/{name}": {
       "delete": {
         "operationId": "ProjectController_deleteSecret",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -548,7 +929,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/tracker": {
       "get": {
         "operationId": "ProjectController_getTracker",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -560,7 +950,16 @@
       },
       "patch": {
         "operationId": "ProjectController_upsertTracker",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -572,7 +971,16 @@
       },
       "delete": {
         "operationId": "ProjectController_deleteTracker",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -586,7 +994,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/tracker/test": {
       "post": {
         "operationId": "ProjectController_testTracker",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -600,7 +1017,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/error-target": {
       "get": {
         "operationId": "ProjectController_getErrorTarget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -612,7 +1038,16 @@
       },
       "patch": {
         "operationId": "ProjectController_upsertErrorTarget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -624,7 +1059,16 @@
       },
       "delete": {
         "operationId": "ProjectController_deleteErrorTarget",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -638,7 +1082,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/schedule": {
       "get": {
         "operationId": "ProjectController_getSchedule",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -650,7 +1103,16 @@
       },
       "patch": {
         "operationId": "ProjectController_updateSchedule",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -664,7 +1126,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/auto-promote": {
       "get": {
         "operationId": "ProjectController_getAutoPromote",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -676,7 +1147,16 @@
       },
       "put": {
         "operationId": "ProjectController_setAutoPromote",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -690,7 +1170,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/promotion-strategy": {
       "get": {
         "operationId": "ProjectController_getPromotionStrategy",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -702,7 +1191,16 @@
       },
       "put": {
         "operationId": "ProjectController_putPromotionStrategy",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -716,7 +1214,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/promote": {
       "post": {
         "operationId": "ProjectController_runPromote",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -730,7 +1237,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/promote-runs": {
       "get": {
         "operationId": "ProjectController_listPromoteRuns",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -744,7 +1260,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/promote-digest": {
       "get": {
         "operationId": "ProjectController_getPromoteDigest",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -758,7 +1283,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/pause": {
       "post": {
         "operationId": "ProjectController_pauseRuns",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -772,7 +1306,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/resume": {
       "post": {
         "operationId": "ProjectController_resumeRuns",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -786,7 +1329,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/inception": {
       "post": {
         "operationId": "ProjectController_runInception",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -800,7 +1352,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/smoke-test": {
       "post": {
         "operationId": "ProjectController_runSmokeTest",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -814,7 +1375,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle": {
       "get": {
         "operationId": "LifecycleController_current",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -826,7 +1396,16 @@
       },
       "put": {
         "operationId": "LifecycleController_upsert",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -840,7 +1419,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/versions": {
       "get": {
         "operationId": "LifecycleController_versions",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -854,7 +1442,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/apply-template": {
       "post": {
         "operationId": "LifecycleController_applyTemplate",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -868,7 +1465,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/apply-stock-template": {
       "post": {
         "operationId": "LifecycleController_applyStockTemplate",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -882,7 +1488,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/agents/{ref}": {
       "put": {
         "operationId": "LifecycleController_upsertAgent",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -894,7 +1517,24 @@
       },
       "delete": {
         "operationId": "LifecycleController_deleteAgent",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -908,7 +1548,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/workflows/{id}": {
       "put": {
         "operationId": "LifecycleController_upsertWorkflow",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -920,7 +1577,24 @@
       },
       "delete": {
         "operationId": "LifecycleController_deleteWorkflow",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -934,7 +1608,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/custom-skills/{name}": {
       "put": {
         "operationId": "LifecycleController_upsertCustomSkill",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -946,7 +1637,24 @@
       },
       "delete": {
         "operationId": "LifecycleController_deleteCustomSkill",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -960,7 +1668,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/human-gates": {
       "put": {
         "operationId": "LifecycleController_setHumanGates",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -974,7 +1691,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/graph-layout": {
       "get": {
         "operationId": "LifecycleController_getGraphLayout",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -986,7 +1712,16 @@
       },
       "put": {
         "operationId": "LifecycleController_setGraphLayout",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1000,7 +1735,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/graph-edit-base": {
       "get": {
         "operationId": "LifecycleController_graphEditBase",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1014,7 +1758,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/lifecycle/graph-edit-pr": {
       "post": {
         "operationId": "LifecycleController_graphEditPr",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1070,7 +1831,16 @@
     "/v1/orgs/{slug}/lifecycle-templates/{name}": {
       "get": {
         "operationId": "OrgTemplateController_get",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1082,7 +1852,16 @@
       },
       "put": {
         "operationId": "OrgTemplateController_upsertYaml",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1094,7 +1873,16 @@
       },
       "delete": {
         "operationId": "OrgTemplateController_delete",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1108,7 +1896,24 @@
     "/v1/orgs/{slug}/lifecycle-templates/{name}/agents/{ref}": {
       "put": {
         "operationId": "OrgTemplateController_upsertAgent",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1120,7 +1925,24 @@
       },
       "delete": {
         "operationId": "OrgTemplateController_deleteAgent",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1134,7 +1956,24 @@
     "/v1/orgs/{slug}/lifecycle-templates/{name}/workflows/{id}": {
       "put": {
         "operationId": "OrgTemplateController_upsertWorkflow",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1146,7 +1985,24 @@
       },
       "delete": {
         "operationId": "OrgTemplateController_deleteWorkflow",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1160,7 +2016,24 @@
     "/v1/orgs/{slug}/lifecycle-templates/{name}/custom-skills/{skill}": {
       "put": {
         "operationId": "OrgTemplateController_upsertCustomSkill",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skill",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1172,7 +2045,24 @@
       },
       "delete": {
         "operationId": "OrgTemplateController_deleteCustomSkill",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skill",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1186,7 +2076,16 @@
     "/v1/orgs/{slug}/lifecycle-templates/{name}/human-gates": {
       "put": {
         "operationId": "OrgTemplateController_setHumanGates",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1214,7 +2113,16 @@
     "/v1/lifecycle-templates/stock/{id}": {
       "get": {
         "operationId": "StockTemplateController_detail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1228,7 +2136,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs": {
       "get": {
         "operationId": "RunController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1240,7 +2165,16 @@
       },
       "post": {
         "operationId": "RunController_runNow",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1254,7 +2188,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}": {
       "get": {
         "operationId": "RunController_detail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1268,7 +2211,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/full": {
       "get": {
         "operationId": "RunController_full",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1282,7 +2234,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/cancel": {
       "post": {
         "operationId": "RunController_cancel",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1296,7 +2257,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/timeline": {
       "get": {
         "operationId": "RunController_timeline",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1310,7 +2288,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/network-summary": {
       "get": {
         "operationId": "RunController_networkSummary",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1324,7 +2311,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/intent": {
       "post": {
         "operationId": "RunController_addIntent",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1338,7 +2342,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/timeline/stream": {
       "get": {
         "operationId": "TimelineSseController_stream",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1352,7 +2365,32 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets": {
       "get": {
         "operationId": "ChangesetController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1366,7 +2404,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}": {
       "get": {
         "operationId": "ChangesetController_get",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1380,7 +2427,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}/diff": {
       "get": {
         "operationId": "ChangesetController_diff",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1394,7 +2450,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}/decisions": {
       "post": {
         "operationId": "ChangesetController_decide",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1408,7 +2473,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}/rollback": {
       "post": {
         "operationId": "ChangesetController_rollback",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1422,7 +2496,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}/drop": {
       "post": {
         "operationId": "ChangesetController_drop",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1436,7 +2519,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/recent-rollbacks": {
       "get": {
         "operationId": "ChangesetController_recentRollbacks",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1450,7 +2550,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/digest/{date}": {
       "get": {
         "operationId": "ChangesetController_digest",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1464,7 +2581,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/digest/{date}/group-promote": {
       "post": {
         "operationId": "ChangesetController_groupPromote",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1478,7 +2612,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}/comments": {
       "get": {
         "operationId": "ChangesetController_listComments",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1490,7 +2633,16 @@
       },
       "post": {
         "operationId": "ChangesetController_createComment",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "csId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1504,7 +2656,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/changesets/{csId}/comments/{commentId}": {
       "patch": {
         "operationId": "ChangesetController_updateComment",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "commentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1516,7 +2677,16 @@
       },
       "delete": {
         "operationId": "ChangesetController_deleteComment",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "commentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1544,7 +2714,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/approvals": {
       "get": {
         "operationId": "ApprovalController_listForProject",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1558,7 +2737,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/approvals/{approvalId}/resolve": {
       "post": {
         "operationId": "ApprovalController_resolve",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "approvalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1572,7 +2760,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/intent-inbox": {
       "get": {
         "operationId": "IntentInboxController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1584,7 +2781,16 @@
       },
       "post": {
         "operationId": "IntentInboxController_create",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1612,7 +2818,16 @@
     "/v1/orgs/{slug}/ideas/{ideaId}/decision": {
       "post": {
         "operationId": "IdeasController_decide",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "ideaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1626,7 +2841,16 @@
     "/v1/orgs/{slug}/costs": {
       "get": {
         "operationId": "CostController_orgCosts",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "days",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1640,7 +2864,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/costs": {
       "get": {
         "operationId": "CostController_projectCosts",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "days",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1654,7 +2895,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/runs/{runId}/costs": {
       "get": {
         "operationId": "CostController_runCosts",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1668,7 +2918,16 @@
     "/v1/orgs/{slug}/metrics": {
       "get": {
         "operationId": "MetricsController_orgMetrics",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "window",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1682,7 +2941,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/metrics": {
       "get": {
         "operationId": "MetricsController_projectMetrics",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1696,7 +2972,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/slos": {
       "get": {
         "operationId": "SloController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1708,7 +2993,16 @@
       },
       "post": {
         "operationId": "SloController_create",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1722,7 +3016,24 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/slos/{sloId}": {
       "patch": {
         "operationId": "SloController_update",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sloId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1734,7 +3045,24 @@
       },
       "delete": {
         "operationId": "SloController_remove",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sloId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1762,7 +3090,16 @@
     "/v1/orgs/{slug}/projects/{projectSlug}/health": {
       "get": {
         "operationId": "HealthController_projectHealth",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "projectSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1854,7 +3191,16 @@
     "/v1/notifications/unsubscribe": {
       "post": {
         "operationId": "UnsubscribeController_unsubscribe",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1882,7 +3228,16 @@
     "/v1/orgs/{slug}/notifications/routes/{eventKind}": {
       "put": {
         "operationId": "AlertRoutesController_upsert",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "eventKind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1922,7 +3277,16 @@
     "/v1/orgs/{slug}/llm/providers/{providerId}": {
       "patch": {
         "operationId": "LlmController_updateProvider",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1934,7 +3298,16 @@
       },
       "delete": {
         "operationId": "LlmController_deleteProvider",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1948,7 +3321,16 @@
     "/v1/orgs/{slug}/llm/providers/{providerId}/test": {
       "post": {
         "operationId": "LlmController_testProvider",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1962,7 +3344,16 @@
     "/v1/orgs/{slug}/llm/providers/{providerId}/probe": {
       "post": {
         "operationId": "LlmController_probeProvider",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -2002,7 +3393,16 @@
     "/v1/orgs/{slug}/llm/profiles/{profileId}": {
       "patch": {
         "operationId": "LlmController_updateProfile",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "profileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2014,7 +3414,16 @@
       },
       "delete": {
         "operationId": "LlmController_deleteProfile",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "profileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2028,7 +3437,32 @@
     "/v1/integrations/github/install": {
       "get": {
         "operationId": "GitHubAppController_install",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "org",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2042,7 +3476,32 @@
     "/v1/integrations/github/install/callback": {
       "get": {
         "operationId": "GitHubAppController_callback",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "installation_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "setup_action",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2211,6 +3670,16 @@
       "post": {
         "operationId": "ApiKeyController_issue",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueKeyDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2236,7 +3705,16 @@
     "/v1/orgs/{slug}/api-keys/{id}": {
       "delete": {
         "operationId": "ApiKeyController_revoke",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2251,6 +3729,16 @@
       "post": {
         "operationId": "RunnerAgentController_issue",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueAgentDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2276,7 +3764,16 @@
     "/v1/orgs/{slug}/runner-agents/{id}": {
       "delete": {
         "operationId": "RunnerAgentController_revoke",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2291,6 +3788,16 @@
       "post": {
         "operationId": "RunnerAgentPublicController_hello",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HelloDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2319,6 +3826,16 @@
       "post": {
         "operationId": "RunnerAgentPublicController_heartbeat",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2332,7 +3849,26 @@
     "/v1/runner-agent/steps/{stepId}/events": {
       "post": {
         "operationId": "RunnerAgentPublicController_events",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2346,7 +3882,26 @@
     "/v1/runner-agent/steps/{stepId}/outcome": {
       "post": {
         "operationId": "RunnerAgentPublicController_outcome",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutcomeDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2360,7 +3915,24 @@
     "/v1/runner-agent/sandbox-ops/{stepId}/{op}": {
       "post": {
         "operationId": "SandboxOpsController_dispatch",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "op",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2375,6 +3947,16 @@
       "post": {
         "operationId": "SandboxOpsController_poll",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PollOpsDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2388,7 +3970,34 @@
     "/v1/runner-agent/sandbox-ops/{stepId}/{opId}/result": {
       "post": {
         "operationId": "SandboxOpsController_postResult",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "opId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostResultDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2403,6 +4012,16 @@
       "post": {
         "operationId": "OutboundWebhookController_create",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2428,7 +4047,26 @@
     "/v1/orgs/{slug}/webhooks/{id}": {
       "patch": {
         "operationId": "OutboundWebhookController_update",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWebhookDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2440,7 +4078,16 @@
       },
       "delete": {
         "operationId": "OutboundWebhookController_remove",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2454,7 +4101,24 @@
     "/v1/orgs/{slug}/webhooks/{id}/deliveries": {
       "get": {
         "operationId": "OutboundWebhookController_deliveries",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2468,7 +4132,16 @@
     "/v1/orgs/{slug}/webhooks/{id}/test": {
       "post": {
         "operationId": "OutboundWebhookController_test",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -2483,6 +4156,16 @@
       "post": {
         "operationId": "MagicLinkController_request",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2497,6 +4180,16 @@
       "post": {
         "operationId": "MagicLinkController_verify",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2552,7 +4245,16 @@
     "/v1/orgs/{slug}/evals": {
       "get": {
         "operationId": "EvalController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2566,7 +4268,16 @@
     "/v1/orgs/{slug}/evals/compare/{abRunId}": {
       "get": {
         "operationId": "EvalController_compare",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "abRunId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2580,7 +4291,16 @@
     "/v1/orgs/{slug}/evals/{runId}": {
       "get": {
         "operationId": "EvalController_detail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2594,7 +4314,16 @@
     "/v1/orgs/{slug}/admin/city/status": {
       "get": {
         "operationId": "CityController_status",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "view",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2664,7 +4393,122 @@
     "/v1/orgs/{slug}/admin/city/tenant/{orgSlug}": {
       "get": {
         "operationId": "CityController_tenant",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/mail": {
+      "get": {
+        "operationId": "CityController_mail",
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/reply": {
+      "post": {
+        "operationId": "CityController_reply",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/read": {
+      "post": {
+        "operationId": "CityController_markRead",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/mark-unread": {
+      "post": {
+        "operationId": "CityController_markUnread",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "City"
+        ]
+      }
+    },
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/archive": {
+      "post": {
+        "operationId": "CityController_archive",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2692,6 +4536,59 @@
         "type": "http"
       }
     },
-    "schemas": {}
+    "schemas": {
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "IssueKeyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "IssueAgentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "HelloDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "HeartbeatDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "EventDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "OutcomeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PollOpsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PostResultDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateWebhookDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateWebhookDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "VerifyDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
   }
 }

@@ -125,6 +125,77 @@ export const EMPTY_CITY_USAGE: CityUsage = {
   partial: false,
 };
 
+/**
+ * One message the city's agents left for a human. This is the "ask a human"
+ * primitive: an agent that needs a decision writes to the `human` mailbox and
+ * waits, and a reply joins the same thread so the answer reaches the agent that
+ * asked (`gc mail`, `docs/03-infrastructure/08-gas-city-integration.md`).
+ */
+export interface CityMailMessage {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  createdAt: string | null;
+  read: boolean;
+  threadId: string | null;
+  rig: string | null;
+}
+
+export interface CityMailbox {
+  items: CityMailMessage[];
+  total: number;
+  /** How many of `items` still want an answer. Counted here, not by the page. */
+  unread: number;
+}
+
+/** What a mailbox write answers: the id it acted on, and the state it reached. */
+export interface CityMailAction {
+  id: string;
+  status: string;
+}
+
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * One message, normalized from the supervisor's snake_case. A message without an
+ * id cannot be answered, so it projects to null and the caller drops it rather
+ * than rendering a button that goes nowhere.
+ */
+export function projectMailMessage(raw: unknown): CityMailMessage | null {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  const id = textOf(record.id).trim();
+  if (!id) return null;
+  return {
+    id,
+    from: textOf(record.from),
+    to: textOf(record.to),
+    subject: textOf(record.subject),
+    body: textOf(record.body),
+    createdAt: typeof record.created_at === 'string' ? record.created_at : null,
+    read: record.read === true,
+    threadId: typeof record.thread_id === 'string' ? record.thread_id : null,
+    rig: typeof record.rig === 'string' ? record.rig : null,
+  };
+}
+
+/**
+ * Normalizes `/v0/city/<city>/mail`. The order is the city's own — newest first —
+ * and the unread count is the number a person still has to deal with, which is
+ * what the Inbox says out loud.
+ */
+export function projectMail(raw: unknown): CityMailbox {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  const items = (Array.isArray(record.items) ? record.items : [])
+    .map((item) => projectMailMessage(item))
+    .filter((item): item is CityMailMessage => item !== null);
+  const total = typeof record.total === 'number' && Number.isFinite(record.total) ? record.total : items.length;
+  return { items, total, unread: items.filter((item) => !item.read).length };
+}
+
 export type StatusView = 'full' | 'summary';
 
 /**
@@ -239,6 +310,37 @@ export function rigRows(items: unknown[]): CityRig[] {
   return out;
 }
 
+/**
+ * The supervisor explains a refusal in the body — `{"detail":"csrf: X-GC-Request
+ * header required…"}`, or the bridge's "the mailbox stays closed". Keep the reason
+ * and cap it: an error log wants the sentence, not the payload.
+ */
+async function detailOf(response: { text(): Promise<string> }): Promise<string> {
+  try {
+    const body = (await response.text()).trim().replace(/\s+/g, ' ');
+    return body ? ` — ${body.slice(0, 200)}` : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * An answer, as opposed to silence. The difference decides what the operator is
+ * told: a 403 from the bridge is a token to set, and answering "Gas City is not
+ * reachable" would send them to restart a supervisor that is running fine.
+ */
+class CityAnswerError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Statuses that mean nobody was there to answer: the bridge could not reach it. */
+const UNREACHABLE_STATUSES = new Set([502, 503, 504]);
+
 @Injectable()
 export class CityService {
   private readonly logger = new Logger(CityService.name);
@@ -248,6 +350,12 @@ export class CityService {
   /** See `knownRigs()`. `null` means nothing has been read yet. */
   private rigCache: { at: number; rigs: string[] } | null = null;
   private readonly rigCacheMs = Number(process.env.CITY_RIGS_CACHE_MS ?? DEFAULT_RIG_CACHE_MS);
+  /**
+   * The secret the bridge wants before it will carry anything from the mailbox.
+   * Empty is a working configuration, not a broken one: the bridge answers 403 and
+   * the Inbox says the mailbox could not be read.
+   */
+  private readonly bridgeToken = String(process.env.CITY_BRIDGE_TOKEN ?? '').trim();
 
   /**
    * `orgProjects` is optional so the rig binding degrades to "no projects" rather
@@ -340,7 +448,103 @@ export class CityService {
     return projectUsage(await this.read<unknown>('usage'));
   }
 
-  private async read<T>(resource: string): Promise<T> {
+  /**
+   * What the city's agents asked a human, newest first.
+   *
+   * The only read that carries the bridge token: the bridge binds the host's
+   * LAN address, and a mailbox is correspondence rather than a counter.
+   */
+  async mail(): Promise<CityMailbox> {
+    return projectMail(await this.read<unknown>('mail', { headers: this.mailboxHeaders() }));
+  }
+
+  /**
+   * Answer a message. The reply joins the message's thread, which is what makes
+   * the answer reach the agent that stopped to ask.
+   *
+   * Returns the message the supervisor created, or null when it answered without
+   * naming one — the reply has landed either way, so a missing echo is not an error.
+   */
+  async replyToMail(messageId: string, body: string): Promise<CityMailMessage | null> {
+    const id = encodeURIComponent(messageId);
+    const created = await this.write<unknown>(`mail/${id}/reply`, { body });
+    // Answering is answering: an unread flag left behind would keep asking a person
+    // who has already replied. Best-effort, because the reply itself has landed.
+    await this.write(`mail/${id}/read`, {}).catch((error: unknown) => {
+      this.logger.warn(
+        `city mail "${messageId}" was replied to but not marked read: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+    return projectMailMessage(created);
+  }
+
+  /** Mark one message read without answering it. */
+  async markMailRead(messageId: string): Promise<CityMailAction> {
+    return this.mailAction(messageId, 'read');
+  }
+
+  /** Put a message back in the unread pile. */
+  async markMailUnread(messageId: string): Promise<CityMailAction> {
+    return this.mailAction(messageId, 'mark-unread');
+  }
+
+  /**
+   * Put a message away. The supervisor drops an archived message from the mailbox
+   * read, and offers no way back — so the Inbox's archive button is the only one
+   * that asks before it writes.
+   */
+  async archiveMail(messageId: string): Promise<CityMailAction> {
+    return this.mailAction(messageId, 'archive');
+  }
+
+  private async mailAction(messageId: string, action: string): Promise<CityMailAction> {
+    const answer = await this.write<unknown>(`mail/${encodeURIComponent(messageId)}/${action}`, {});
+    const record = (answer ?? {}) as Record<string, unknown>;
+    return { id: messageId, status: typeof record.status === 'string' ? record.status : action };
+  }
+
+  private mailboxHeaders(): Record<string, string> {
+    return this.bridgeToken ? { 'x-city-bridge-token': this.bridgeToken } : {};
+  }
+
+  /**
+   * The mailbox writes. One attempt, never a retry: a mutation repeated answers
+   * twice, and a reply sent twice is a second message in somebody's thread.
+   */
+  private async write<T>(path: string, body: unknown): Promise<T> {
+    const url = `${this.baseUrl}/v0/city/${encodeURIComponent(this.city)}/${path}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          // The supervisor refuses every mutation without it.
+          'x-gc-request': 'mergecrew-inbox',
+          ...this.mailboxHeaders(),
+        },
+        body: JSON.stringify(body ?? {}),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}${await detailOf(response)}`);
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const why = controller.signal.aborted
+        ? `it did not answer within ${this.timeoutMs}ms, so the write may or may not have landed`
+        : message;
+      throw new Error(`city write "${path}" did not complete at ${this.baseUrl}: ${why}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async read<T>(resource: string, init: { headers?: Record<string, string> } = {}): Promise<T> {
     const url = `${this.baseUrl}/v0/city/${encodeURIComponent(this.city)}/${resource}`;
     // Two attempts, and only a *timeout* is repeated: a refused connection or an
     // HTTP status is the city answering, and asking again would only make the
@@ -351,12 +555,21 @@ export class CityService {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, { signal: controller.signal, headers: init.headers });
         if (!response.ok) {
-          throw new Error(`city read "${resource}" failed: HTTP ${response.status}`);
+          throw new CityAnswerError(
+            response.status,
+            `city read "${resource}" failed: HTTP ${response.status}${await detailOf(response)}`,
+          );
         }
         return (await response.json()) as T;
       } catch (error) {
+        // An HTTP status is the city answering, so it is reported as one instead of
+        // being retried into the "not reachable" message.
+        if (error instanceof CityAnswerError && !UNREACHABLE_STATUSES.has(error.status)) {
+          this.logger.warn(`city read "${resource}" refused: HTTP ${error.status}`);
+          throw new Error(`Gas City refused the read at ${this.baseUrl}: ${error.message}`);
+        }
         message = error instanceof Error ? error.message : String(error);
         this.logger.warn(`city read "${resource}" failed (attempt ${attempt} of ${attempts}): ${message}`);
         if (!controller.signal.aborted) break;

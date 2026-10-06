@@ -1,7 +1,29 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { CityService } from './city.service.js';
 import { RequireRole, RoleGuard } from '../../common/role.guard.js';
 import { TenantContextService } from '../../common/tenant-context.service.js';
+
+/** A message id travels into a URL path, so it is held to the ids the city issues. */
+const MESSAGE_ID = /^[A-Za-z0-9._-]{1,128}$/;
+/** A reply is a sentence to an agent, not a document. */
+const REPLY_MAX = 4_000;
+
+function messageIdOf(raw: string): string {
+  const id = String(raw ?? '').trim();
+  if (!MESSAGE_ID.test(id)) throw new BadRequestException('that is not a city message id');
+  return id;
+}
 
 /**
  * Gas City read endpoints. Mounted under the admin tree so the existing
@@ -74,5 +96,56 @@ export class CityController {
   @RequireRole('admin')
   async tenant(@Param('orgSlug') orgSlug: string) {
     return this.city.tenant(orgSlug);
+  }
+
+  /**
+   * What the city's agents asked a human — the messages an agent left behind when
+   * it stopped for a decision, each with the thread a reply has to join.
+   *
+   * `operator` rather than `admin`, because answering one is the same act as
+   * resolving an approval, and the Inbox is where a person does both.
+   */
+  @Get('mail')
+  @RequireRole('operator')
+  async mail() {
+    return this.city.mail();
+  }
+
+  /**
+   * Answer one message. The reply joins the message's thread, so the agent that
+   * stopped to ask receives it in the same conversation.
+   */
+  @Post('mail/:messageId/reply')
+  @RequireRole('operator')
+  async reply(@Param('messageId') messageId: string, @Body() body: { body?: unknown }) {
+    const answer = typeof body?.body === 'string' ? body.body.trim() : '';
+    if (!answer) throw new BadRequestException('a reply needs a body');
+    if (answer.length > REPLY_MAX) throw new BadRequestException(`a reply is limited to ${REPLY_MAX} characters`);
+    return this.city.replyToMail(messageIdOf(messageId), answer);
+  }
+
+  @Post('mail/:messageId/read')
+  @RequireRole('operator')
+  @HttpCode(HttpStatus.OK)
+  async markRead(@Param('messageId') messageId: string) {
+    return this.city.markMailRead(messageIdOf(messageId));
+  }
+
+  @Post('mail/:messageId/mark-unread')
+  @RequireRole('operator')
+  @HttpCode(HttpStatus.OK)
+  async markUnread(@Param('messageId') messageId: string) {
+    return this.city.markMailUnread(messageIdOf(messageId));
+  }
+
+  /**
+   * Put a message away. The supervisor has no unarchive route, so this is the one
+   * action here that a person should mean: the page asks before it writes.
+   */
+  @Post('mail/:messageId/archive')
+  @RequireRole('operator')
+  @HttpCode(HttpStatus.OK)
+  async archive(@Param('messageId') messageId: string) {
+    return this.city.archiveMail(messageIdOf(messageId));
   }
 }

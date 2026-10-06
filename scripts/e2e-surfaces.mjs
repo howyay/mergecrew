@@ -57,6 +57,26 @@ async function apiGet(path) {
   return { status: res.status, json, text };
 }
 
+/**
+ * A write, used here only to prove a route is mounted and validated. The
+ * mailbox check sends an id the city cannot have, so nothing leaves the stack.
+ */
+async function apiPost(path, body) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = undefined;
+  }
+  return { status: res.status, json, text };
+}
+
 async function webGet(path) {
   const res = await fetch(`${WEB}${path}`, { redirect: 'follow' });
   return { status: res.status, url: res.url, body: await res.text() };
@@ -377,6 +397,84 @@ async function main() {
     );
   } else {
     info('city', 'city page renders', `HTTP ${cityPage.status} → ${cityPage.url}`);
+  }
+
+  // ── the human mailbox the inbox is wired to ──────────────────────────────
+  // An agent that stops to ask a person leaves a message here. The read needs
+  // the bridge token on top of the role, so a 403 names the missing half of the
+  // wiring instead of looking like an empty mailbox.
+  console.log('\nmailbox');
+  const mail = await apiGet(`/v1/orgs/${ORG}/admin/city/mail`);
+  if (mail.status === 200) {
+    const box = mail.json ?? {};
+    const items = Array.isArray(box.items) ? box.items : [];
+    check(
+      'mailbox',
+      'GET city mail',
+      typeof box.total === 'number' && typeof box.unread === 'number',
+      `${items.length} message(s) · ${box.unread} unread · total ${box.total}`,
+    );
+    const shaped = items.every(
+      (m) =>
+        typeof m.id === 'string' &&
+        typeof m.subject === 'string' &&
+        typeof m.body === 'string' &&
+        typeof m.read === 'boolean',
+    );
+    check(
+      'mailbox',
+      'every message carries an id, a subject, a body and a read flag',
+      shaped,
+      shaped ? (items.length === 0 ? 'empty mailbox, nothing to shape' : `${items.length} message(s) shaped`) : 'a message was missing a field',
+    );
+    const unread = items.filter((m) => !m.read).length;
+    check(
+      'mailbox',
+      'the unread count matches the messages',
+      unread === box.unread,
+      `${unread} unread in the list, ${box.unread} reported`,
+    );
+  } else if (mail.status === 403) {
+    info('mailbox', 'GET city mail', `HTTP 403 — ${apiMessage(mail.json)}`);
+  } else {
+    const hostAnswers = await supervisorAnswersOnHost();
+    check(
+      'mailbox',
+      'GET city mail',
+      false,
+      hostAnswers
+        ? `HTTP ${mail.status} while the supervisor answers on the host (${HOST_CITY}) — set CITY_BRIDGE_TOKEN for both the bridge and the API (§7b)`
+        : `HTTP ${mail.status} — ${apiMessage(mail.json)}`,
+    );
+  }
+  // An id the city cannot have is refused before anything is written, which
+  // proves the write route is mounted, parameterized and validated without
+  // sending mail into the city.
+  const badId = await apiPost(`/v1/orgs/${ORG}/admin/city/mail/not-a-real-id!/reply`, { body: 'x' });
+  check(
+    'mailbox',
+    'a reply refuses an id that is not a message id',
+    badId.status === 400,
+    `HTTP ${badId.status} ${apiMessage(badId.json)}`.trim(),
+  );
+  const inboxPage = await webGet(`/orgs/${ORG}/inbox`);
+  if (inboxPage.status === 200) {
+    const section = inboxPage.body.includes('Agents waiting on a person');
+    check(
+      'mailbox',
+      'inbox page carries the city queue',
+      section,
+      section ? 'the mailbox section is rendered' : 'no mailbox section on the inbox page',
+    );
+    const broke = inboxPage.body.includes('The city mailbox could not be read');
+    check(
+      'mailbox',
+      'inbox page did not fall back to a failed mail read',
+      !broke,
+      broke ? 'the page said the mailbox could not be read' : 'the mailbox read landed',
+    );
+  } else {
+    info('mailbox', 'inbox page renders the city queue', `HTTP ${inboxPage.status} → ${inboxPage.url}`);
   }
 
   // ── removed surfaces stay removed ────────────────────────────────────────

@@ -29,6 +29,7 @@ The supervisor serves a read-only JSON API. Use it for reads. Do not shell out f
 | `GET /v0/city/<city>/agents` | agent list | `{items, total}` |
 | `GET /v0/city/<city>/sessions` | session list | `{items, total}` |
 | `GET /v0/city/<city>/usage` | token and cost record | `{available, recording, source, today, recent, recent_window_secs, observed_from, updated_at}` |
+| `GET /v0/city/<city>/mail` | the mailbox addressed to `human` | `{items, total}`; each item `{id, from, to, subject, body, created_at, read, thread_id, rig}` |
 
 `today` holds `invocations`, `compute_facts`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_creation_tokens`, `wall_seconds`, `cost_usd_estimate`, and `unpriced` — the number of
@@ -52,6 +53,8 @@ Use the CLI for a change. Add `--json` to every call and parse the result.
 | `gc rig list --json` | list the rigs |
 | `gc beads city use-managed` | repair a rig endpoint mirror after a move |
 | `gc agent list --json` | agent config as gc reads it |
+| `gc mail send human "<body>" --subject <s>` | ask a person a question (see §7c) |
+| `gc mail reply <id> "<body>"` | answer into the asking thread |
 
 Verified agent keys: `name`, `qualified_name`, `scope`, `work_dir`, `suspended`, `pool`,
 `work_query`, `sling_query`. Verified session keys: `id`, `name`, `template`, `provider`, `state`,
@@ -81,7 +84,9 @@ derives to `mc-demo`, which the city does not hold until someone creates it.
 ## 6. Product surface
 
 The API module `apps/api/src/modules/city` exposes the reads. It reuses `RoleGuard` and
-`RequireRole('admin')`, in the same way as the admin health endpoint.
+`RequireRole('admin')`, in the same way as the admin health endpoint; the mailbox writes and reads
+need `operator` and above instead, because answering an agent is an operational call, not an
+administrative one.
 
 | Route | Result |
 | - | - |
@@ -91,6 +96,8 @@ The API module `apps/api/src/modules/city` exposes the reads. It reuses `RoleGua
 | `GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` | the rig for an organization |
 | `GET /v1/orgs/:slug/admin/city/projects` | every project of the organization bound to a rig, with a reason and a fix for the unmapped ones |
 | `GET /v1/orgs/:slug/admin/city/usage` | today's invocations, tokens and wall time, with the city's own cost estimate |
+| `GET /v1/orgs/:slug/admin/city/mail` | the mailbox addressed to `human`, normalized to `{items, total, unread}` |
+| `POST /v1/orgs/:slug/admin/city/mail/:messageId/{reply,read,mark-unread,archive}` | answer a message, or move it between read, unread and archived (§7c) |
 
 ### Cost and usage
 
@@ -196,9 +203,13 @@ could not be read.
   `host.containers.internal` resolves to under podman/pasta. Measured on the reference host: a
   listener on the LAN address is reachable from a container at `169.254.1.2`, one bound to
   `172.17.0.1` is not reachable at all, and `10.89.0.1` is the container-side gateway, not the host;
-* it forwards **only reads** — `GET /v0/city/<city>/{status,agents,sessions,usage,rigs}`, exactly what
-  `CityService` asks for. The supervisor's write routes (`bead/{id}/close`, `mail/{id}/reply`,
-  `session/{id}/respond`) are refused with `403`, so a container network cannot drive the city;
+* it forwards **reads** — `GET/HEAD /v0/city/<city>/{status,agents,sessions,usage,rigs}` — and the
+  **human mailbox**: `GET .../mail` plus `POST .../mail/{id}/{reply,read,mark-unread,archive}`. Mail
+  is private even on a LAN, so both halves of it need `X-City-Bridge-Token` to match
+  `CITY_BRIDGE_TOKEN`; with no token configured the bridge answers `403` and names the missing
+  variable, which is the state it starts in. Every other write (`bead/{id}/close`,
+  `session/{id}/respond`, …) and every other path is refused with `403`, a write to a read path is
+  `405`, so a container network still cannot drive the city;
 * it is stateless, so it needs no restart of the supervisor. Rebinding the supervisor was rejected:
   it has no bind flag, it would mean restarting the unit the agents live in, and the same port would
   then serve its write routes to the LAN.
@@ -208,7 +219,14 @@ systemctl --user status mergecrew-city-bridge                  # is it running?
 node ops/gc/city-bridge.mjs --check                            # supervisor reachable from the host?
 node ops/gc/city-bridge.mjs --check --target http://host.containers.internal:8373
 curl -s http://127.0.0.1:8373/v0/city/gascity/usage            # what the API sees
+curl -s -H "x-city-bridge-token: $CITY_BRIDGE_TOKEN" \
+  http://127.0.0.1:8373/v0/city/gascity/mail                   # the mailbox, token-gated
 ```
+
+The token is set on the unit, not in the repo: `/home/haoye/.config/mergecrew/city-bridge-env.yml`
+is the third compose file `mergecrew-stack.service` loads, and it supplies `CITY_BRIDGE_TOKEN` to
+**both** the bridge and the API — the API reads mail through the bridge, so the two must agree. A
+secret belongs in the operator's config tree, not in `docker-compose.full.yml`.
 
 Host-side tooling (`ops/gc/city-client.mjs`, the gates) keeps reading `127.0.0.1:8372` directly: it
 runs on the host, where the supervisor is already reachable. After the host changes networks the
@@ -217,8 +235,46 @@ it.
 
 `scripts/e2e-surfaces.mjs` proves both directions: with the bridge missing it fails the city reads
 (`HTTP 500 while the supervisor answers on the host`), and with it in place the same run reads
-status, agents, sessions, projects and the tenant mapping, then asserts the Gas City page renders
-the payload with no "unavailable" card.
+status, agents, sessions, projects and the tenant mapping, asserts the Gas City page renders the
+payload with no "unavailable" card, and checks that the mailbox answers `403` without the token and
+`200` with it.
+
+## 7c. Asking a human: the mailbox the inbox is wired to
+
+An agent that will not guess stops and asks. The city has two primitives for that:
+
+* **Mail** — `gc mail send <to> <body>`, where `<to>` is a session alias or `human`. A message is a
+  bead of type `message`, so it is durable and threaded: `gc mail reply <id>` answers into the same
+  `thread_id`, which is how the answer reaches the asking agent instead of landing in a void.
+  `gc mail` also has `archive`, `count`, `inbox`, `mark-read`, `mark-unread`, `peek`, `read`,
+  `thread`.
+* **Session prompts** — `GET /v0/city/<city>/session/{id}/pending` and `POST …/respond` for a live
+  session blocked on a prompt. That is the dashboard's path and it only covers an agent that is
+  still running; mail survives a session that ended, so the product reads mail.
+
+The Inbox page (`apps/web/src/app/orgs/[slug]/(org)/inbox/page.tsx`) renders three queues now:
+ideas, the city mailbox, and gate approvals. Mail is read from
+`/v1/orgs/:slug/admin/city/mail` and answered through the four write routes in §10-api-surface;
+answering rejoins the thread and marks the message read, and archiving is one-way because the city
+exposes no unarchive route.
+
+Two traps found by probing the live supervisor (2026-10-06):
+
+* **Write routes need `X-GC-Request`.** Without a non-empty `X-GC-Request` header every mutation
+  answers `403 {"title":"Forbidden","detail":"csrf: X-GC-Request header required on mutation
+  endpoints"}`, including `POST …/mail/{id}/reply`. `CityService.write()` sends
+  `x-gc-request: mergecrew-inbox`; a body is required on create (`{to, subject, body}`) but optional
+  on reply.
+* **`gc mail` and `GET /mail` are different views.** On the reference host `gc mail count --json`
+  reported `{"recipient":"human","total":9,"unread":9}` with ids like `ga-wisp-oo9y`, and those ids
+  are not in the bead store (`bd show` answers "not found") — while `GET /v0/city/gascity/mail`
+  answered 23 items with `gc-` ids. The CLI also refuses remote operation (`gc mail inbox: this
+  command does not support a remote city … yet`), so anything in a container must read the API. When
+  the two disagree, the API is what the product shows.
+
+Also: a write that times out is reported as *"did not complete at …; it did not answer within
+<timeout>ms, so the write may or may not have landed"* and is never retried, because retrying a
+reply would answer an agent twice.
 
 ## 7a. The rig endpoint mirror
 

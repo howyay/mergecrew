@@ -18,7 +18,14 @@ export class ApprovalService {
     const t = this.tenant.require();
     const rows = await this.prisma.withTenant(t.organizationId, (tx) =>
       tx.approvalRequest.findMany({
-        where: { organizationId: t.organizationId, resolvedAt: null },
+        where: {
+          organizationId: t.organizationId,
+          resolvedAt: null,
+          // An archived project is off the Projects page, so a gate filed
+          // against it is not a decision anybody can still act on. Leaving it
+          // out keeps the inbox about work that is live.
+          project: { deletedAt: null },
+        },
         orderBy: { createdAt: 'asc' },
         include: { project: { select: { slug: true } } },
       }),

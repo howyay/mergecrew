@@ -2388,10 +2388,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orgs/{slug}/admin/city/mail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CityController_mail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CityController_reply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CityController_markRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/mark-unread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CityController_markUnread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/admin/city/mail/{messageId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CityController_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        UpdateProfileDto: Record<string, never>;
+        IssueKeyDto: Record<string, never>;
+        IssueAgentDto: Record<string, never>;
+        HelloDto: Record<string, never>;
+        HeartbeatDto: Record<string, never>;
+        EventDto: Record<string, never>;
+        OutcomeDto: Record<string, never>;
+        PollOpsDto: Record<string, never>;
+        PostResultDto: Record<string, never>;
+        CreateWebhookDto: Record<string, never>;
+        UpdateWebhookDto: Record<string, never>;
+        RequestDto: Record<string, never>;
+        VerifyDto: Record<string, never>;
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -2437,7 +2531,9 @@ export interface operations {
     AuthController_whoami: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2489,7 +2585,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2506,7 +2604,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2523,7 +2623,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2540,7 +2642,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2557,7 +2661,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2574,7 +2681,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2591,7 +2701,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2608,7 +2720,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2625,7 +2739,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2642,7 +2758,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2659,7 +2777,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2676,7 +2796,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2693,7 +2815,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2708,9 +2832,15 @@ export interface operations {
     };
     OrgController_auditLog: {
         parameters: {
-            query?: never;
+            query: {
+                limit: string;
+                projectId: string;
+                format: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2727,7 +2857,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2744,7 +2876,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2761,7 +2895,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2778,7 +2914,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2795,7 +2933,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2812,7 +2952,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2829,7 +2971,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2846,7 +2990,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2863,10 +3009,16 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -2914,7 +3066,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2931,7 +3085,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2948,7 +3104,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2965,7 +3123,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2982,7 +3142,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                installationId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2999,7 +3161,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3016,7 +3180,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3033,7 +3199,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                kind: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3050,7 +3219,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3067,7 +3238,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3084,7 +3257,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3101,7 +3277,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3118,7 +3296,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3135,7 +3315,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3152,7 +3334,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3169,7 +3353,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3186,7 +3372,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3203,7 +3391,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3220,7 +3410,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3237,7 +3429,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3254,7 +3448,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3271,7 +3467,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3288,7 +3486,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3305,7 +3505,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3322,7 +3524,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3339,7 +3543,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3356,7 +3562,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3373,7 +3581,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3390,7 +3600,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3407,7 +3619,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3424,7 +3638,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3441,7 +3657,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3458,7 +3676,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3475,7 +3695,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3492,7 +3714,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3509,7 +3733,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3526,7 +3752,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                ref: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3543,7 +3772,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                ref: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3560,7 +3792,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3577,7 +3812,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3594,7 +3832,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3611,7 +3852,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3628,7 +3872,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3645,7 +3891,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3662,7 +3910,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3679,7 +3929,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3696,7 +3948,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                slug: string;
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3764,7 +4019,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3781,7 +4038,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3798,7 +4057,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3815,7 +4076,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+                ref: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3832,7 +4096,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+                ref: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3849,7 +4116,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3866,7 +4136,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3883,7 +4156,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+                skill: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3900,7 +4176,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+                skill: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3917,7 +4196,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3951,7 +4232,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3966,9 +4249,13 @@ export interface operations {
     };
     RunController_list: {
         parameters: {
-            query?: never;
+            query: {
+                limit: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3985,7 +4272,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4002,7 +4291,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4019,7 +4310,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4036,7 +4329,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4051,9 +4346,13 @@ export interface operations {
     };
     RunController_timeline: {
         parameters: {
-            query?: never;
+            query: {
+                after: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4070,7 +4369,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4087,7 +4388,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4104,7 +4408,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4119,9 +4425,14 @@ export interface operations {
     };
     ChangesetController_list: {
         parameters: {
-            query?: never;
+            query: {
+                status: string;
+                run_id: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4138,7 +4449,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4155,7 +4468,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4172,7 +4487,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4189,7 +4506,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4206,7 +4525,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4221,9 +4542,13 @@ export interface operations {
     };
     ChangesetController_recentRollbacks: {
         parameters: {
-            query?: never;
+            query: {
+                limit: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4240,7 +4565,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                date: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4257,7 +4585,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                date: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4274,7 +4605,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4291,7 +4624,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                csId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4308,7 +4643,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                commentId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4325,7 +4662,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                commentId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4359,7 +4698,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4376,7 +4717,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                approvalId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4393,7 +4736,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4410,7 +4755,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4444,7 +4791,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                ideaId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4459,7 +4808,9 @@ export interface operations {
     };
     CostController_orgCosts: {
         parameters: {
-            query?: never;
+            query: {
+                days: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4476,9 +4827,13 @@ export interface operations {
     };
     CostController_projectCosts: {
         parameters: {
-            query?: never;
+            query: {
+                days: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4495,7 +4850,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4510,7 +4867,9 @@ export interface operations {
     };
     MetricsController_orgMetrics: {
         parameters: {
-            query?: never;
+            query: {
+                window: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4527,9 +4886,13 @@ export interface operations {
     };
     MetricsController_projectMetrics: {
         parameters: {
-            query?: never;
+            query: {
+                window: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4546,7 +4909,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4563,7 +4928,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4580,7 +4947,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                sloId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4597,7 +4967,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+                sloId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4631,7 +5004,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                projectSlug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4748,7 +5123,9 @@ export interface operations {
     };
     UnsubscribeController_unsubscribe: {
         parameters: {
-            query?: never;
+            query: {
+                token: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4784,7 +5161,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                eventKind: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4835,7 +5214,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                providerId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4852,7 +5233,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                providerId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4869,7 +5252,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                providerId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4886,7 +5271,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                providerId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4937,7 +5324,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                profileId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4954,7 +5343,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                profileId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4969,7 +5360,11 @@ export interface operations {
     };
     GitHubAppController_install: {
         parameters: {
-            query?: never;
+            query: {
+                org: string;
+                project: string;
+                from: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4986,7 +5381,11 @@ export interface operations {
     };
     GitHubAppController_callback: {
         parameters: {
-            query?: never;
+            query: {
+                installation_id: string;
+                state: string;
+                setup_action: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5212,7 +5611,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueKeyDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -5226,7 +5629,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5263,7 +5668,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueAgentDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -5277,7 +5686,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5297,7 +5708,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelloDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -5331,7 +5746,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5345,10 +5764,16 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                stepId: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5362,10 +5787,16 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                stepId: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5379,7 +5810,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                stepId: string;
+                op: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5399,7 +5833,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PollOpsDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5413,10 +5851,17 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                stepId: string;
+                opId: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostResultDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5450,7 +5895,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWebhookDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -5464,7 +5913,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5481,10 +5932,16 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWebhookDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5496,9 +5953,13 @@ export interface operations {
     };
     OutboundWebhookController_deliveries: {
         parameters: {
-            query?: never;
+            query: {
+                limit: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5515,7 +5976,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5535,7 +5998,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5552,7 +6019,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5615,7 +6086,9 @@ export interface operations {
     };
     EvalController_list: {
         parameters: {
-            query?: never;
+            query: {
+                limit: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5634,7 +6107,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                abRunId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5651,7 +6126,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                runId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5666,7 +6143,9 @@ export interface operations {
     };
     CityController_status: {
         parameters: {
-            query?: never;
+            query: {
+                view: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5753,7 +6232,102 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CityController_mail: {
+        parameters: {
+            query?: never;
+            header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CityController_reply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CityController_markRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CityController_markUnread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CityController_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
