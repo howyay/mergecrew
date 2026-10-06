@@ -12,6 +12,8 @@ export interface StockTemplateSummary {
   name: string;
   description: string;
   stack: string[];
+  /** The Gas City formula this template exports to (ADR-0016 step 2). */
+  formula?: string;
 }
 
 /**
@@ -104,6 +106,11 @@ export function StockTemplatePicker({
                     )}
                   </div>
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{t.description}</p>
+                  {t.formula && (
+                    <p className="mt-1 font-mono text-[11.5px] text-zinc-500">
+                      city formula {t.formula}
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-1">
                     {t.stack.map((s) => (
                       <span

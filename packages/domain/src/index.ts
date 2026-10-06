@@ -11,6 +11,7 @@ export * from './tools.js';
 export * from './tool-surface.js';
 export * from './rigs.js';
 export * from './ideas.js';
+export * from './formula.js';
 export * from './errors.js';
 export * from './auto-promote.js';
 export * from './parse-package-diff.js';
