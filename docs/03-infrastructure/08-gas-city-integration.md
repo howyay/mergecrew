@@ -29,7 +29,7 @@ The supervisor serves a read-only JSON API. Use it for reads. Do not shell out f
 | `GET /v0/city/<city>/agents` | agent list | `{items, total}` |
 | `GET /v0/city/<city>/sessions` | session list | `{items, total}` |
 | `GET /v0/city/<city>/usage` | token and cost record | `{available, recording, source, today, recent, recent_window_secs, observed_from, updated_at}` |
-| `GET /v0/city/<city>/mail` | the mailbox addressed to `human` | `{items, total}`; each item `{id, from, to, subject, body, created_at, read, thread_id, rig}` |
+| `GET /v0/city/<city>/mail` | the unread mailbox addressed to `human` | `{items, total}`; each item `{id, from, to, subject, body, created_at, read, thread_id, rig}` |
 
 `today` holds `invocations`, `compute_facts`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_creation_tokens`, `wall_seconds`, `cost_usd_estimate`, and `unpriced` — the number of
@@ -96,7 +96,7 @@ administrative one.
 | `GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` | the rig for an organization |
 | `GET /v1/orgs/:slug/admin/city/projects` | every project of the organization bound to a rig, with a reason and a fix for the unmapped ones |
 | `GET /v1/orgs/:slug/admin/city/usage` | today's invocations, tokens and wall time, with the city's own cost estimate |
-| `GET /v1/orgs/:slug/admin/city/mail` | the mailbox addressed to `human`, normalized to `{items, total, unread}` |
+| `GET /v1/orgs/:slug/admin/city/mail` | the unread mailbox addressed to `human`, normalized to `{items, total, unread}` |
 | `POST /v1/orgs/:slug/admin/city/mail/:messageId/{reply,read,mark-unread,archive}` | answer a message, or move it between read, unread and archived (§7c) |
 
 ### Cost and usage
@@ -258,7 +258,7 @@ ideas, the city mailbox, and gate approvals. Mail is read from
 answering rejoins the thread and marks the message read, and archiving is one-way because the city
 exposes no unarchive route.
 
-Two traps found by probing the live supervisor (2026-10-06):
+Three traps found by probing the live supervisor (2026-10-06):
 
 * **Write routes need `X-GC-Request`.** Without a non-empty `X-GC-Request` header every mutation
   answers `403 {"title":"Forbidden","detail":"csrf: X-GC-Request header required on mutation
@@ -271,6 +271,15 @@ Two traps found by probing the live supervisor (2026-10-06):
   answered 23 items with `gc-` ids. The CLI also refuses remote operation (`gc mail inbox: this
   command does not support a remote city … yet`), so anything in a container must read the API. When
   the two disagree, the API is what the product shows.
+* **`GET …/mail` lists unread messages only.** It is an inbox, not an archive: marking a message read
+  takes it out of the listing (`total` 22 → 21 on the reference host, the id gone from `items`) and
+  `mark-unread` puts it back at the top, so every listed item carries `read: false`. Both writes were
+  verified against the supervisor and through the API on 2026-10-06 with the message put back
+  afterwards. What follows for the page: the count in the section header *is* the queue, a per-card
+  "unread" chip would repeat it on every card, and "mark read" is the button a person uses to clear a
+  message they have handled — so the card says *"marking read clears it from this list"* next to
+  *"archiving clears it from the city mailbox for good"*, and the reply box notes that answering
+  marks it read too.
 
 Also: a write that times out is reported as *"did not complete at …; it did not answer within
 <timeout>ms, so the write may or may not have landed"* and is never retried, because retrying a
