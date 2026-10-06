@@ -251,4 +251,15 @@ Error codes (non-exhaustive):
 
 ## SDKs
 
-A first-party TypeScript SDK and an OpenAPI document published at `/v1/openapi.json` are Planned, not yet exposed. The Next.js BFF currently calls the API with hand-written fetch wrappers.
+The API publishes an OpenAPI document at `/v1/openapi.json`, and the same document is committed at
+`docs/openapi.json` — regenerate it with `pnpm --filter @mergecrew/api openapi:export`, and CI fails
+when the committed copy and the generated one differ. The first-party TypeScript SDK is generated from
+it (`pnpm --filter @mergecrew/sdk generate`). The Next.js BFF currently calls the API with hand-written
+fetch wrappers.
+
+The exporter compiles first and then runs the built app (`node dist/openapi-export.js`) because
+`@nestjs/swagger` reads parameters and request bodies out of TypeScript decorator metadata, which `tsc`
+emits and `tsx` does not: an export run through `tsx src/openapi-export.ts` writes a document with
+`"parameters": []` on every operation and no request body at all. `argumentsAreMissing` in
+`apps/api/src/openapi-spec-check.ts` refuses to write that document, and the same file lists the
+operations that name a path parameter the document does not describe.
