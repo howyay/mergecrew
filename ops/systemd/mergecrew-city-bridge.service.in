@@ -1,0 +1,32 @@
+[Unit]
+Description=Mergecrew city bridge — lets the stack read the host-only Gas City supervisor
+Documentation=file://__REPO__/docs/03-infrastructure/08-gas-city-integration.md
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__
+Environment=PATH=__LOCAL_BIN__:__PROFILE_BIN__:/run/current-system/sw/bin:/usr/bin:/bin
+# The supervisor binds 127.0.0.1:8372, and no container can reach a loopback
+# address on the host, so every /v1/orgs/:slug/admin/city/* route in the stack
+# answers 500 and the Gas City tab renders "unavailable" cards.
+#
+# This bridge listens on the host's default-route address — the address
+# `host.containers.internal` maps to — and forwards only the five read paths the
+# API asks for. The supervisor's write routes (bead close, mail reply, session
+# respond) are refused, so the container network cannot drive the city.
+#
+# It binds whatever address the default route had at start: after the host moves
+# networks, `systemctl --user restart mergecrew-city-bridge` re-resolves it.
+Environment=CITY_BRIDGE_PORT=8373
+Environment=CITY_BRIDGE_TARGET=http://127.0.0.1:8372
+Environment=CITY_BRIDGE_CITY=gascity
+ExecStart=__NODE__ __REPO__/ops/gc/city-bridge.mjs --bind auto
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mergecrew-city-bridge
+
+[Install]
+WantedBy=default.target

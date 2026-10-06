@@ -260,19 +260,18 @@ async function main() {
   } else if (usage.status === 403) {
     info('costs', 'GET city usage', `HTTP 403 for this credential — ${apiMessage(usage.json)}`);
   } else {
-    // A 500 here is the deployment shape, not a defect in the route: the API
-    // answers with a generic body, so ask the host directly. `gc supervisor run`
-    // binds 127.0.0.1 and has no flag to change it, so a containerised API only
-    // ever reaches its own loopback unless CITY_API_URL points at an address the
-    // container can route to. The page then keeps the ledger and says the usage
-    // panel could not be read, which the checks below prove.
+    // A 500 with a live supervisor means the stack cannot reach the city: the
+    // supervisor binds 127.0.0.1, and the repo ships `ops/gc/city-bridge.mjs`
+    // plus a compose default that points CITY_API_URL at it, so this is a
+    // deployment missing a piece — not a defect in the route.
     const hostAnswers = await supervisorAnswersOnHost();
-    info(
+    check(
       'costs',
       'GET city usage',
+      !hostAnswers,
       hostAnswers
-        ? `HTTP ${usage.status} — the supervisor answers on the host (${HOST_CITY}) but not from the API container: it binds 127.0.0.1, so point CITY_API_URL at an address the container can reach`
-        : `HTTP ${usage.status} — ${apiMessage(usage.json)}`,
+        ? `HTTP ${usage.status} while the supervisor answers on the host (${HOST_CITY}) — the stack cannot reach it: install mergecrew-city-bridge.service and point CITY_API_URL at it (see docs/03-infrastructure/08-gas-city-integration.md §7b)`
+        : `HTTP ${usage.status} — ${apiMessage(usage.json)} (the supervisor is not answering on the host either)`,
     );
   }
   const costsPage = await webGet(`/orgs/${ORG}/costs`);
@@ -286,6 +285,83 @@ async function main() {
     );
   } else {
     info('costs', 'costs page renders', `HTTP ${costsPage.status} → ${costsPage.url}`);
+  }
+
+  // ── the Gas City tab ─────────────────────────────────────────────────────
+  // Every route here reads the supervisor through `ops/gc/city-bridge.mjs`,
+  // because the supervisor itself only listens on the host's loopback.
+  console.log('\ncity');
+  const cityStatus = await apiGet(`/v1/orgs/${ORG}/admin/city/status`);
+  let anAgentName;
+  if (cityStatus.status === 200) {
+    const status = cityStatus.json ?? {};
+    const details = Array.isArray(status.agent_details) ? status.agent_details : [];
+    anAgentName = details[0]?.name;
+    check('city', 'GET city status', typeof status.name === 'string', `name=${status.name} version=${status.version}`);
+    check('city', 'status is the configured city', status.name === CITY, `expected ${CITY}, got ${status.name}`);
+    check(
+      'city',
+      'status carries agents and work',
+      typeof status.agent_count === 'number' && status.agent_count > 0 && status.work !== undefined,
+      `agents=${status.agent_count} running=${status.running} work=${JSON.stringify(status.work ?? {})}`,
+    );
+  } else if (cityStatus.status === 403) {
+    info('city', 'GET city status', `HTTP 403 for this credential — ${apiMessage(cityStatus.json)}`);
+  } else {
+    const hostAnswers = await supervisorAnswersOnHost();
+    check(
+      'city',
+      'GET city status',
+      false,
+      hostAnswers
+        ? `HTTP ${cityStatus.status} while the supervisor answers on the host (${HOST_CITY}) — the stack cannot reach the city bridge (§7b)`
+        : `HTTP ${cityStatus.status} — ${apiMessage(cityStatus.json)}`,
+    );
+  }
+  for (const resource of ['agents', 'sessions', 'projects']) {
+    const read = await apiGet(`/v1/orgs/${ORG}/admin/city/${resource}`);
+    if (read.status === 200) {
+      const items = asList(read.json);
+      check('city', `GET city ${resource}`, Array.isArray(items), `${items?.length ?? 0} item(s)`);
+    } else if (read.status === 403) {
+      info('city', `GET city ${resource}`, 'HTTP 403 for this credential');
+    } else {
+      check('city', `GET city ${resource}`, false, `HTTP ${read.status} — ${apiMessage(read.json)}`);
+    }
+  }
+  const tenant = await apiGet(`/v1/orgs/${ORG}/admin/city/tenant/${ORG}`);
+  if (tenant.status === 200) {
+    check('city', 'GET city tenant mapping', Boolean(tenant.json) && typeof tenant.json === 'object', `keys=${Object.keys(tenant.json ?? {}).join(',')}`);
+  } else if (tenant.status === 403) {
+    info('city', 'GET city tenant mapping', 'HTTP 403 for this credential');
+  } else {
+    check('city', 'GET city tenant mapping', false, `HTTP ${tenant.status} — ${apiMessage(tenant.json)}`);
+  }
+  const cityPage = await webGet(`/orgs/${ORG}/city`);
+  if (cityPage.status === 200) {
+    const unavailable = (cityPage.body.match(/unavailable/gi) ?? []).length;
+    check(
+      'city',
+      'city page renders live data',
+      unavailable === 0,
+      unavailable === 0 ? 'no "unavailable" card' : `${unavailable} "unavailable" card(s) — the page kept a failed read`,
+    );
+    const names = [CITY, anAgentName].filter(Boolean);
+    const missing = names.filter((name) => !cityPage.body.includes(name));
+    check(
+      'city',
+      'city page shows the read payload',
+      names.length > 0 && missing.length === 0,
+      missing.length === 0 ? `found ${names.join(' and ')}` : `missing ${missing.join(', ')}`,
+    );
+    check(
+      'city',
+      'city page keeps its sections',
+      ['Tenant mapping', 'Agents', 'Sessions'].every((title) => cityPage.body.includes(title)),
+      'Tenant mapping · Agents · Sessions',
+    );
+  } else {
+    info('city', 'city page renders', `HTTP ${cityPage.status} → ${cityPage.url}`);
   }
 
   // ── removed surfaces stay removed ────────────────────────────────────────

@@ -219,6 +219,13 @@ services:
     restart: unless-stopped
     environment:
       <<: *default_env
+      # The supervisor binds 127.0.0.1 on the host, so the container cannot read
+      # it directly and every /admin/city route would answer 500. It is reached
+      # through ops/gc/city-bridge.mjs (mergecrew-city-bridge.service), which
+      # listens on the default-route address that host.containers.internal maps
+      # to and forwards only the five read paths the API asks for. On a host that
+      # runs the API outside a container, set CITY_API_URL=http://127.0.0.1:8372.
+      CITY_API_URL: ${CITY_API_URL:-http://host.containers.internal:8373}
     networks: [internal]
     ports:
       - '127.0.0.1:4000:4000'
