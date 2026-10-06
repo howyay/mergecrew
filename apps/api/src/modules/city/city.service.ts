@@ -28,6 +28,103 @@ export interface CityList {
   [key: string]: unknown;
 }
 
+/**
+ * The counters the city records for a window. The supervisor's own number is a
+ * local estimate, never a provider bill, so every field is passed through with
+ * the reason it can be zero: `unpriced` counts invocations it had no price for.
+ */
+export interface CityUsageWindow {
+  invocations: number;
+  compute_facts: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  wall_seconds: number;
+  cost_usd_estimate: number;
+  unpriced: number;
+}
+
+export interface CityUsage {
+  available: boolean;
+  recording: boolean;
+  source: string;
+  today: CityUsageWindow;
+  recent: CityUsageWindow;
+  recent_window_secs: number;
+  observed_from: string | null;
+  updated_at: string | null;
+  /**
+   * True when at least one invocation in today's window has no price on file, so
+   * `cost_usd_estimate` is a floor rather than a bill.
+   */
+  partial: boolean;
+}
+
+const EMPTY_USAGE_WINDOW: CityUsageWindow = {
+  invocations: 0,
+  compute_facts: 0,
+  input_tokens: 0,
+  output_tokens: 0,
+  cache_read_tokens: 0,
+  cache_creation_tokens: 0,
+  wall_seconds: 0,
+  cost_usd_estimate: 0,
+  unpriced: 0,
+};
+
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function windowOf(raw: unknown): CityUsageWindow {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  return {
+    invocations: count(record.invocations),
+    compute_facts: count(record.compute_facts),
+    input_tokens: count(record.input_tokens),
+    output_tokens: count(record.output_tokens),
+    cache_read_tokens: count(record.cache_read_tokens),
+    cache_creation_tokens: count(record.cache_creation_tokens),
+    wall_seconds: count(record.wall_seconds),
+    cost_usd_estimate: count(record.cost_usd_estimate),
+    unpriced: count(record.unpriced),
+  };
+}
+
+/**
+ * Normalizes `/v0/city/<city>/usage`. A payload the supervisor could not fill in
+ * turns into zeros, and `partial` carries the honesty flag the cost page needs:
+ * an unpriced invocation is a missing price, not a free one.
+ */
+export function projectUsage(raw: unknown): CityUsage {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  const today = windowOf(record.today);
+  return {
+    available: record.available === true,
+    recording: record.recording === true,
+    source: typeof record.source === 'string' ? record.source : 'unknown',
+    today,
+    recent: windowOf(record.recent),
+    recent_window_secs: count(record.recent_window_secs),
+    observed_from: typeof record.observed_from === 'string' ? record.observed_from : null,
+    updated_at: typeof record.updated_at === 'string' ? record.updated_at : null,
+    partial: today.unpriced > 0,
+  };
+}
+
+export const EMPTY_CITY_USAGE: CityUsage = {
+  available: false,
+  recording: false,
+  source: 'unknown',
+  today: EMPTY_USAGE_WINDOW,
+  recent: EMPTY_USAGE_WINDOW,
+  recent_window_secs: 0,
+  observed_from: null,
+  updated_at: null,
+  partial: false,
+};
+
 export type StatusView = 'full' | 'summary';
 
 /**
@@ -223,6 +320,18 @@ export class CityService {
     ]);
     const map = bindProjects(projects, rigs, parseRigOverrides(process.env.CITY_PROJECT_RIGS));
     return { city: this.city, rigs, ...map };
+  }
+
+  /**
+   * What the city recorded today, and in the last few minutes.
+   *
+   * The supervisor's counters are a local estimate: it knows the tokens and wall
+   * time it observed, and it cannot know what the provider will charge. So the
+   * cost figure is reported next to `unpriced` and `partial` instead of being
+   * dressed up as a bill.
+   */
+  async usage(): Promise<CityUsage> {
+    return projectUsage(await this.read<unknown>('usage'));
   }
 
   private async read<T>(resource: string): Promise<T> {

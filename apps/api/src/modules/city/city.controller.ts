@@ -51,6 +51,17 @@ export class CityController {
     return this.city.projectRigs(tenant.organizationId);
   }
 
+  /**
+   * What the city recorded today. The supervisor's numbers are a local
+   * estimate, so the payload carries `source`, `unpriced` and `partial` for the
+   * cost page to label honestly rather than present as a bill.
+   */
+  @Get('usage')
+  @RequireRole('admin')
+  async usage() {
+    return this.city.usage();
+  }
+
   @Get('tenant/:orgSlug')
   @RequireRole('admin')
   async tenant(@Param('orgSlug') orgSlug: string) {
