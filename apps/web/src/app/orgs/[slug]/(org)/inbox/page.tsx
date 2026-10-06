@@ -202,7 +202,6 @@ export default async function InboxPage({
                       <span className="text-[14px] font-medium tracking-[-0.005em]">
                         {message.subject}
                       </span>
-                      {!message.read && <Chip kind="medium">unread</Chip>}
                     </div>
                     <p className="mt-2 m-0 whitespace-pre-wrap text-[13.5px] leading-[1.55] text-ink">
                       {message.body}
@@ -546,6 +545,8 @@ function MailFlagForms({
         </Button>
       </form>
       <span className="text-center font-mono text-[10.5px] leading-[1.4] text-muted">
+        marking read clears it from this list
+        <br />
         archiving clears it from the city mailbox for good
       </span>
     </div>
