@@ -7,8 +7,6 @@ import {
   Bot,
   Building2,
   CalendarCheck,
-  ChartLine,
-  FlaskConical,
   FolderKanban,
   GitPullRequest,
   Inbox,
@@ -154,9 +152,10 @@ export function OrgSidebar({
       label: 'Operations',
       items: [
         { label: 'Gas City', href: `${base}/city`, icon: Building2 },
-        { label: 'Metrics', href: `${base}/metrics`, icon: ChartLine },
+        // Metrics and Evals are parked until they have something to show: the
+        // rollup job that fills the metrics page wrote no rows (fixed in #49),
+        // and no eval has ever been run. Both routes still answer.
         { label: 'Costs', href: `${base}/costs`, icon: Wallet },
-        { label: 'Evals', href: `${base}/evals`, icon: FlaskConical },
       ],
     },
     {
@@ -233,7 +232,7 @@ export function ProjectSidebar({
       items: [
         { label: 'Today', href: base, icon: CalendarCheck },
         { label: 'Runs', href: `${base}/runs`, icon: ListChecks },
-        { label: 'Metrics', href: `${base}/metrics`, icon: ChartLine },
+        // Metrics is parked with the org-level page (see OrgSidebar).
         { label: 'Changesets', href: `${base}/changesets`, icon: GitPullRequest },
         {
           label: 'Digests',
