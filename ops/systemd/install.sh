@@ -13,7 +13,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-UNITS=(mergecrew-ci.service mergecrew-ideation.service mergecrew-pipeline.service mergecrew-stack.service mergecrew-stack-health.service mergecrew-stack-health.timer mergecrew-uiscan.service mergecrew-uiscan.timer)
+UNITS=(mergecrew-ci.service mergecrew-ideation.service mergecrew-pipeline.service mergecrew-city-bridge.service mergecrew-stack.service mergecrew-stack-health.service mergecrew-stack-health.timer mergecrew-uiscan.service mergecrew-uiscan.timer)
 
 NODE="$(command -v node)"
 LOCAL_BIN="$(dirname "$(command -v pnpm || command -v node)")"
@@ -60,6 +60,7 @@ install_units() {
   echo
   echo "CI status file:   $REPO/ops/ci/state/last-run.json"
   echo "Stack origin:     $REPO/ops/systemd/mergecrew-stack.service"
+  echo "City bridge:      journalctl --user -u mergecrew-city-bridge -f  (the stack reads the city through :8373)"
   echo "Swipe UI:         http://127.0.0.1:7788/"
   echo "Ideas deck:       https://sd.yay.how/orgs/demo/ideas"
   echo "Logs:             journalctl --user -u mergecrew-ci -f"

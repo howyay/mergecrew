@@ -758,24 +758,46 @@ docker exec mergecrew-web sh -c 'grep -rl "Changelog" /app/apps/web/.next | head
 
 `node scripts/e2e-surfaces.mjs` walks the path a browser takes — web page → API
 route → database or Gas City — for projects, lifecycle templates (and the city
-formula each one becomes), costs (ledger + city usage), tools/skills and ideas,
-and asserts that the Activity surface stays deleted. Point it at any stack with
+formula each one becomes), costs (ledger + city usage), the Gas City tab (status,
+agents, sessions, projects, the tenant mapping), tools/skills and ideas, asserts
+that the sidebar renders its icons, and that the Activity surface stays deleted.
+Point it at any stack with
 `MERGREW_E2E_API` / `MERGREW_E2E_WEB` (defaults `http://127.0.0.1:4000` and
 `http://127.0.0.1:3100`) and pick the org with `MERGREW_E2E_ORG` (default
 `demo`). Routes the credential is not allowed to read come back as `info`
 instead of `fail`, so a green run never overstates what could be seen.
 
-### The city is host-only, so the containerised API reads nothing from it
+### The city is host-only, so the stack reads it through a bridge
 
 `gc supervisor run` binds `127.0.0.1:8372` on the host and has no flag to change
-that. The API container therefore reaches its own loopback, every city read fails
-with `Gas City is not reachable at http://127.0.0.1:8372`, and the Gas City page
-shows exactly that. The costs page is built for it: the ledger renders, the usage
-panel says it could not be read, and no number is invented from the gap. To fill
-the city surfaces in, give the API a route the container can actually use —
-`CITY_API_URL` pointing at an address the supervisor listens on — and no code
-change is needed. `scripts/e2e-surfaces.mjs` reports that read as `info`, not
-`fail`: it is this deployment's shape, not a defect in the route.
+that, so a container only ever reaches its own loopback: every city read came back
+`500 Gas City is not reachable at http://127.0.0.1:8372`, and the Gas City page
+drew "unavailable" cards beside a healthy database.
+
+`ops/gc/city-bridge.mjs` (unit `mergecrew-city-bridge.service`) is the way across.
+It binds the host's default-route address — the one `host.containers.internal`
+resolves to — and forwards only the five read paths the API asks for (`status`,
+`agents`, `sessions`, `usage`, `rigs`); the supervisor's write routes answer
+`403`, so a container network cannot close a bead or answer a session.
+`docker-compose.full.yml` gives the api service
+`CITY_API_URL=http://host.containers.internal:8373`.
+
+```bash
+systemctl --user status mergecrew-city-bridge
+node ops/gc/city-bridge.mjs --check             # 0 = the supervisor answers
+curl -s http://127.0.0.1:8373/v0/city/gascity/usage
+```
+
+Rebinding the supervisor was the other option, and it was rejected: there is no
+bind flag, it means restarting the unit the agents live in, and the write routes
+would be exposed to the LAN either way. Host-side tooling
+(`ops/gc/city-client.mjs`, the gates) keeps reading `127.0.0.1:8372` directly.
+After the host changes networks, restart the bridge so it re-resolves the address.
+
+`scripts/e2e-surfaces.mjs` fails the city reads while the bridge is missing
+(`HTTP 500 while the supervisor answers on the host`) and passes them once it
+runs: the `city` surface reads status, agents, sessions, projects and the tenant
+mapping, then checks the page for a card that says `unavailable`.
 
 ### The bridge network on this host has no way out
 

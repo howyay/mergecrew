@@ -70,7 +70,13 @@ Gas City is single-operator. MergeCrew is multi-tenant. The map is the missing l
 | Remote write | a signed grant that names the city. One grant per organization. Never reuse a grant |
 
 `ops/gc/tenant-map.mjs` renders the map and reports a missing rig, a shared rig, and an unknown
-organization. `CityService.tenant()` in the product exposes the same rule.
+organization. `CityService.tenant()` in the product exposes the same rule, and
+`GET /v1/orgs/:slug/admin/city/tenant/:orgSlug` answers it as a report: `known` says whether the
+city holds the derived rig, and `known: false` is a value, not a 404. That is the normal state of an
+organization whose rig has not been created yet, and the Gas City page renders it as "unknown rig"
+beside the fix (create the rig, or set `CITY_RIGS`) instead of an "unavailable" card. On a
+single-rig city only the reference organization (`mergecrew`) is mapped; a `demo` organization
+derives to `mc-demo`, which the city does not hold until someone creates it.
 
 ## 6. Product surface
 
@@ -129,7 +135,7 @@ next cut, and it is recorded as a finding before this landed.
 
 | Environment variable | Default | Meaning |
 | - | - | - |
-| `CITY_API_URL` | `http://127.0.0.1:8372` | supervisor address |
+| `CITY_API_URL` | `http://127.0.0.1:8372` (compose: `http://host.containers.internal:8373`) | supervisor address, or the city bridge when the API runs in a container (§7b) |
 | `GC_CITY` | `gascity` | city name in the path |
 | `CITY_API_TIMEOUT_MS` | `1500` | read timeout |
 | `CITY_PROJECT_RIGS` | unset | explicit project → rig overrides, when the naming rule cannot find the rig |
@@ -174,6 +180,45 @@ lifecycle formula and let the city run the steps. That is the next cut, recorded
 A read fails with one message that names the address and the fix: "Gas City is not reachable at
 `<url>`. Start the supervisor, or set CITY_API_URL." The failure is logged at warn level. A read
 never blocks the product request path for more than `CITY_API_TIMEOUT_MS`.
+
+## 7b. When the API runs in a container: the city bridge
+
+The supervisor binds `127.0.0.1:8372`, which is a loopback address on the *host*. A container that is
+told to read it reaches its own loopback, so every `/v1/orgs/:slug/admin/city/*` route answers
+`500 Gas City is not reachable at http://127.0.0.1:8372`, the Gas City tab renders "unavailable"
+cards beside a healthy database, and the costs page keeps its ledger while saying the usage panel
+could not be read.
+
+`docker-compose.full.yml` therefore points the API at `ops/gc/city-bridge.mjs` (unit
+`mergecrew-city-bridge.service`), which is the one way across:
+
+* it binds the host's **default-route address** plus loopback, because that is the address
+  `host.containers.internal` resolves to under podman/pasta. Measured on the reference host: a
+  listener on the LAN address is reachable from a container at `169.254.1.2`, one bound to
+  `172.17.0.1` is not reachable at all, and `10.89.0.1` is the container-side gateway, not the host;
+* it forwards **only reads** — `GET /v0/city/<city>/{status,agents,sessions,usage,rigs}`, exactly what
+  `CityService` asks for. The supervisor's write routes (`bead/{id}/close`, `mail/{id}/reply`,
+  `session/{id}/respond`) are refused with `403`, so a container network cannot drive the city;
+* it is stateless, so it needs no restart of the supervisor. Rebinding the supervisor was rejected:
+  it has no bind flag, it would mean restarting the unit the agents live in, and the same port would
+  then serve its write routes to the LAN.
+
+```bash
+systemctl --user status mergecrew-city-bridge                  # is it running?
+node ops/gc/city-bridge.mjs --check                            # supervisor reachable from the host?
+node ops/gc/city-bridge.mjs --check --target http://host.containers.internal:8373
+curl -s http://127.0.0.1:8373/v0/city/gascity/usage            # what the API sees
+```
+
+Host-side tooling (`ops/gc/city-client.mjs`, the gates) keeps reading `127.0.0.1:8372` directly: it
+runs on the host, where the supervisor is already reachable. After the host changes networks the
+default-route address changes with it — `systemctl --user restart mergecrew-city-bridge` re-resolves
+it.
+
+`scripts/e2e-surfaces.mjs` proves both directions: with the bridge missing it fails the city reads
+(`HTTP 500 while the supervisor answers on the host`), and with it in place the same run reads
+status, agents, sessions, projects and the tenant mapping, then asserts the Gas City page renders
+the payload with no "unavailable" card.
 
 ## 7a. The rig endpoint mirror
 
