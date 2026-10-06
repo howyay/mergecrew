@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, PageHead } from '@/components/ui';
 import { publicBaseUrl } from '@/lib/public-url';
 import {
   RunnerKindPicker,
@@ -170,16 +170,23 @@ export default async function RunnerProfilePage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Runner profile</h1>
-        <p className="text-sm text-zinc-500">
-          Which execution substrate runs this org&apos;s steps. Required for{' '}
-          <Link href={`/orgs/${slug}`} className="text-accent underline-offset-[3px] hover:underline">
-            any run
-          </Link>{' '}
-          to start.
-        </p>
-      </header>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Org settings', href: `/orgs/${slug}/settings` },
+          { label: 'Runner profile' },
+        ]}
+        title="Runner profile"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
+            Which execution substrate runs this org&apos;s steps. Required for{' '}
+            <Link href={`/orgs/${slug}`} className="text-accent underline-offset-[3px] hover:underline">
+              any run
+            </Link>{' '}
+            to start.
+          </span>
+        }
+      />
 
       <Card>
         <div className="flex items-baseline justify-between gap-3">

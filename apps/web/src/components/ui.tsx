@@ -550,6 +550,88 @@ export function Stat({
   );
 }
 
+/* Table primitives — one shared header row and cell pair, so pages stop
+   hand-rolling <table> markup and drifting on padding, rules, and
+   header typography. <DataTable> owns the scroll container and the
+   table's base typography, nothing else: the frame belongs to the
+   surrounding <Card>, and drawing a second border here doubled every
+   rule in the pages that nest one inside the other. Callers pass
+   wrapper extras (mt-4, overflow-hidden) through `className`. Cells
+   keep their own meaningful classes (font-mono, colour,
+   whitespace-nowrap) the same way. `align="right"` is the one layout
+   switch — it turns on tabular-nums too. <tbody> is deliberately left
+   to the caller, so any divide-y utilities they already had still
+   work. */
+export function DataTable({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={clsx('overflow-x-auto', className)}>
+      <table className="w-full border-collapse text-left">{children}</table>
+    </div>
+  );
+}
+
+export function THead({ children }: { children: ReactNode }) {
+  return <thead className="border-b border-hair">{children}</thead>;
+}
+
+export function TR({ children, className }: { children: ReactNode; className?: string }) {
+  return <tr className={clsx('border-b border-hair last:border-b-0', className)}>{children}</tr>;
+}
+
+export function TH({
+  children,
+  align = 'left',
+  className,
+}: {
+  children?: ReactNode;
+  align?: 'left' | 'right';
+  className?: string;
+}) {
+  return (
+    <th
+      className={clsx(
+        'px-[18px] py-[12px] text-left font-mono text-[10.5px] font-normal uppercase tracking-[0.1em] text-muted',
+        align === 'right' && 'text-right',
+        className,
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
+export function TD({
+  children,
+  align = 'left',
+  className,
+}: {
+  children?: ReactNode;
+  align?: 'left' | 'right';
+  className?: string;
+}) {
+  return (
+    <td
+      className={clsx(
+        'px-[18px] py-[12px] align-top text-[13.5px] text-ink-2',
+        align === 'right' && 'text-right tabular-nums',
+        className,
+      )}
+    >
+      {children}
+    </td>
+  );
+}
+
+export function TableEmpty({ colSpan, children }: { colSpan: number; children: ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-[18px] py-[18px] text-[13.5px] text-muted">
+        {children}
+      </td>
+    </tr>
+  );
+}
+
 /* SLO health badge (V2.af / #746). Compact green/amber/red dot +
    optional label derived from worst SLO state across the project.
    `unconfigured` is its own state so the UI doesn't imply "healthy"

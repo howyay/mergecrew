@@ -502,7 +502,7 @@ export default async function ProjectSettings({
           id="slos"
           anchor="18 · OPERATIONS"
           title="SLOs"
-          desc="Service-level objectives evaluated every 5 minutes against the metrics rollups. Breaches and recoveries appear on the project activity stream and are routed to your alert channels."
+          desc="Service-level objectives evaluated every 5 minutes against the metrics rollups. Breaches and recoveries appear on the project timeline and are routed to your alert channels."
         >
           <SlosForm
             slug={slug}

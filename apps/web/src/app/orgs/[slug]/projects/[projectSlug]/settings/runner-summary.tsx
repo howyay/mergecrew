@@ -15,6 +15,7 @@
  */
 
 import Link from 'next/link';
+import { DataTable, TD, TR } from '@/components/ui';
 
 interface RunnerConfig {
   image?: string;
@@ -110,7 +111,7 @@ export function RunnerSummary({
   }
   return (
     <div className="space-y-4">
-      <table className="w-full text-sm">
+      <DataTable>
         <tbody>
           <Row label="Image" value={runner.image ?? '(supervisor default — runner-polyglot)'} />
           <Row
@@ -135,7 +136,7 @@ export function RunnerSummary({
             value={fmtList(runner.egress?.allow, '(none — sandbox blocks all)')}
           />
         </tbody>
-      </table>
+      </DataTable>
       <p className="text-xs text-muted">
         Edit these values from{' '}
         <Link className="text-accent underline-offset-[3px] hover:underline" href={lifecycleHref}>
@@ -158,10 +159,10 @@ export function RunnerSummary({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <tr className="border-t border-zinc-100 align-baseline ">
-      <td className="py-2 pr-4 text-xs uppercase tracking-wide text-muted">{label}</td>
-      <td className="py-2 font-mono text-zinc-800 dark:text-zinc-200">{value}</td>
-    </tr>
+    <TR className="align-baseline">
+      <TD className="text-xs uppercase tracking-wide text-muted">{label}</TD>
+      <TD className="font-mono text-ink">{value}</TD>
+    </TR>
   );
 }
 

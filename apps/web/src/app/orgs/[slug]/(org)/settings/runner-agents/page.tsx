@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
 import Link from 'next/link';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, PageHead } from '@/components/ui';
 import { RunnerAgentSetupCallout } from '@/components/runner-agent-setup-callout';
 import { publicBaseUrl } from '@/lib/public-url';
 
@@ -97,14 +97,21 @@ export default async function RunnerAgentsPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Agent tokens</h1>
-        <p className="text-sm text-zinc-500">
-          Enrol the <code>mergecrew/runner-agent</code> container to execute this org&apos;s steps
-          on your own machine or cloud account. Tokens look like{' '}
-          <code>mca_{slug}_…</code> and are shown <strong>exactly once</strong> at creation.
-        </p>
-      </header>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Org settings', href: `/orgs/${slug}/settings` },
+          { label: 'Agent tokens' },
+        ]}
+        title="Agent tokens"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
+            Enrol the <code>mergecrew/runner-agent</code> container to execute this org&apos;s steps
+            on your own machine or cloud account. Tokens look like{' '}
+            <code>mca_{slug}_…</code> and are shown <strong>exactly once</strong> at creation.
+          </span>
+        }
+      />
 
       {!onAgentKind && (
         <div className="rounded border border-warn bg-warn/15 p-3 text-sm text-ink">

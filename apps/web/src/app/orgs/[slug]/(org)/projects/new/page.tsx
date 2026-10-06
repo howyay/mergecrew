@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card } from '@/components/ui';
+import { Card, PageHead } from '@/components/ui';
 import { CreateProjectForm } from '@/components/onboarding/create-project-form';
 
 async function createAction(formData: FormData) {
@@ -23,7 +23,14 @@ export default async function NewProjectPage({ params }: { params: Promise<{ slu
   const { slug } = await params;
   return (
     <main className="mx-auto max-w-xl p-6 space-y-6">
-      <h1 className="text-xl font-semibold">Create a project</h1>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Projects', href: `/orgs/${slug}/projects` },
+          { label: 'New project' },
+        ]}
+        title="Create a project"
+      />
       <Card>
         <CreateProjectForm orgSlug={slug} action={createAction} submitLabel="Create" />
       </Card>

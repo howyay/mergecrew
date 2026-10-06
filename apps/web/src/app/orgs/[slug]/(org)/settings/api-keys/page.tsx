@@ -2,7 +2,7 @@ import { revalidatePath } from 'next/cache';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, PageHead } from '@/components/ui';
 import { CreatedSecretCallout } from '@/components/created-secret-callout';
 import { MfaRequiredCallout } from '@/components/mfa-required-callout';
 
@@ -93,13 +93,20 @@ export default async function ApiKeysPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">API keys</h1>
-        <p className="text-sm text-zinc-500">
-          Programmatic access for SDKs (TS, Python) and CI tooling. Tokens look like{' '}
-          <code>mc_live_…</code> and are shown <strong>exactly once</strong> at creation.
-        </p>
-      </header>
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Org settings', href: `/orgs/${slug}/settings` },
+          { label: 'API keys' },
+        ]}
+        title="API keys"
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
+            Programmatic access for SDKs (TS, Python) and CI tooling. Tokens look like{' '}
+            <code>mc_live_…</code> and are shown <strong>exactly once</strong> at creation.
+          </span>
+        }
+      />
 
       {justIssued && (
         <CreatedSecretCallout

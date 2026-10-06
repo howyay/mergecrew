@@ -13,7 +13,7 @@ import {
 import { api, apiOr404 } from '@/lib/api';
 import { requireSession } from '@/lib/session';
 import { hasRole } from '@/lib/role';
-import { Card, PageHead } from '@/components/ui';
+import { Card, DataTable, PageHead, TD, TH, THead, TR } from '@/components/ui';
 import { DensityToggle } from '@/components/density-toggle';
 import { densityClasses, getDensity } from '@/lib/preferences';
 import { LiveTimeline, ReplayTimeline } from './live-timeline';
@@ -449,36 +449,36 @@ function NetworkPanel({
         </Card>
       ) : (
         <Card>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wide text-muted">
-                <th className="pb-2 pr-2 font-medium">Host</th>
-                <th className="pb-2 pr-2 font-medium">Attempts</th>
-                <th className="pb-2 pr-2 font-medium">Blocked</th>
-                <th className="pb-2 pr-2 font-medium">Sources</th>
-                <th className="pb-2 font-medium">Reasons</th>
-              </tr>
-            </thead>
+          <DataTable>
+            <THead>
+              <TR>
+                <TH>Host</TH>
+                <TH>Attempts</TH>
+                <TH>Blocked</TH>
+                <TH>Sources</TH>
+                <TH>Reasons</TH>
+              </TR>
+            </THead>
             <tbody>
               {summary.items.map((h) => (
-                <tr key={h.host} className="border-t border-hair-2 align-baseline ">
-                  <td className="py-1.5 pr-2 font-mono text-ink">{h.host}</td>
-                  <td className="py-1.5 pr-2 font-mono tabular-nums text-ink-2">{h.attempts}</td>
-                  <td
-                    className={`py-1.5 pr-2 font-mono tabular-nums ${
+                <TR key={h.host} className="align-baseline">
+                  <TD className="font-mono text-ink">{h.host}</TD>
+                  <TD className="font-mono tabular-nums text-ink-2">{h.attempts}</TD>
+                  <TD
+                    className={`font-mono tabular-nums ${
                       h.blocked > 0 ? 'text-energy-deep' : 'text-muted'
                     }`}
                   >
                     {h.blocked}
-                  </td>
-                  <td className="py-1.5 pr-2 text-ink-2">
+                  </TD>
+                  <TD className="text-ink-2">
                     {h.origins.length > 0 ? h.origins.join(', ') : h.sources.join(', ')}
-                  </td>
-                  <td className="py-1.5 text-ink-2">{h.reasons.join(', ')}</td>
-                </tr>
+                  </TD>
+                  <TD className="text-ink-2">{h.reasons.join(', ')}</TD>
+                </TR>
               ))}
             </tbody>
-          </table>
+          </DataTable>
           <p className="mt-3 text-xs text-muted">
             Add a host to the project allowlist to unblock it ·{' '}
             <Link href={allowlistHref} className="underline decoration-dotted hover:text-ink">

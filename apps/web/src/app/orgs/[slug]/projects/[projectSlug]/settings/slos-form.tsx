@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Card } from '@/components/ui';
+import { Card, DataTable, TD, TH, THead, TR } from '@/components/ui';
 import {
   createSloAction,
   updateSloAction,
@@ -65,17 +65,17 @@ export function SlosForm({
             No SLOs yet. Add one to surface a health badge on the project list.
           </div>
         ) : (
-          <table className="w-full text-[13px]">
-            <thead className="text-left font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted">
-              <tr className="border-b border-ink">
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Metric</th>
-                <th className="px-4 py-2 font-medium">Target</th>
-                <th className="px-4 py-2 font-medium">Window</th>
-                <th className="px-4 py-2 font-medium">State</th>
-                {canEdit && <th className="px-4 py-2 font-medium" />}
-              </tr>
-            </thead>
+          <DataTable>
+            <THead>
+              <TR>
+                <TH>Name</TH>
+                <TH>Metric</TH>
+                <TH>Target</TH>
+                <TH>Window</TH>
+                <TH>State</TH>
+                {canEdit && <TH />}
+              </TR>
+            </THead>
             <tbody>
               {items.map((s) => (
                 <SloRow
@@ -95,7 +95,7 @@ export function SlosForm({
                 />
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </Card>
 
@@ -166,25 +166,25 @@ function SloRow({
   };
 
   return (
-    <tr className="border-b border-hair-2 last:border-b-0">
-      <td className="px-4 py-2">
+    <TR>
+      <TD>
         <div className="font-medium">{row.name}</div>
         {!row.enabled && (
           <div className="font-mono text-[10.5px] text-muted">disabled</div>
         )}
-      </td>
-      <td className="px-4 py-2 font-mono text-[11.5px] text-ink-2">
+      </TD>
+      <TD className="font-mono text-[11.5px] text-ink-2">
         {meta?.label ?? row.metric}
-      </td>
-      <td className="px-4 py-2 font-mono tabular-nums">
+      </TD>
+      <TD className="font-mono tabular-nums">
         {row.comparator === 'gte' ? '≥ ' : '≤ '}
         {row.threshold}
         {meta?.unit ? ` ${meta.unit}` : ''}
-      </td>
-      <td className="px-4 py-2 font-mono tabular-nums text-ink-2">
+      </TD>
+      <TD className="font-mono tabular-nums text-ink-2">
         {row.windowHours <= 24 ? `${row.windowHours}h` : `${Math.round(row.windowHours / 24)}d`}
-      </td>
-      <td className="px-4 py-2">
+      </TD>
+      <TD>
         <span
           className={
             'font-mono text-[11px] ' +
@@ -198,9 +198,9 @@ function SloRow({
             </span>
           )}
         </span>
-      </td>
+      </TD>
       {canEdit && (
-        <td className="px-4 py-2 text-right">
+        <TD align="right">
           <button
             type="button"
             onClick={toggleEnabled}
@@ -217,9 +217,9 @@ function SloRow({
           >
             delete
           </button>
-        </td>
+        </TD>
       )}
-    </tr>
+    </TR>
   );
 }
 

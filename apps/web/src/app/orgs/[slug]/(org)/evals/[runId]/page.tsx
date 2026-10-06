@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { api } from '@/lib/api';
 import { requireSession } from '@/lib/session';
-import { Card, Chip } from '@/components/ui';
+import { Card, Chip, PageHead, Stat } from '@/components/ui';
 
 interface EvalRun {
   id: string;
@@ -49,25 +48,24 @@ export default async function EvalDetailPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <Link
-        href={`/orgs/${slug}/evals`}
-        className="text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-700 dark:hover:text-zinc-300"
-      >
-        ← Back to evals
-      </Link>
-      <header className="flex items-baseline justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold font-mono">{run.id.slice(0, 8)}</h1>
-          <p className="text-sm text-zinc-500">
+      <PageHead
+        crumb={[
+          { label: slug, href: `/orgs/${slug}` },
+          { label: 'Evals', href: `/orgs/${slug}/evals` },
+          { label: run.id.slice(0, 8) },
+        ]}
+        title={run.id.slice(0, 8)}
+        meta={
+          <span className="font-mono text-[12.5px] text-muted">
             {new Date(run.startedAt).toLocaleString()} · source: {run.source}
-          </p>
-        </div>
-        <Chip
-          kind={passRate >= 0.95 ? 'low' : passRate >= 0.8 ? 'medium' : 'high'}
-        >
-          {(passRate * 100).toFixed(1)}%
-        </Chip>
-      </header>
+          </span>
+        }
+        actions={
+          <Chip kind={passRate >= 0.95 ? 'low' : passRate >= 0.8 ? 'medium' : 'high'}>
+            {(passRate * 100).toFixed(1)}%
+          </Chip>
+        }
+      />
 
       <Card>
         <div className="grid grid-cols-4 gap-3 text-sm">
@@ -122,14 +120,5 @@ export default async function EvalDetailPage({
         </Card>
       </section>
     </main>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="font-mono tabular-nums">{value}</div>
-    </div>
   );
 }
