@@ -10,6 +10,7 @@ Documentation for contributors and operators of [Mergecrew](https://github.com/m
 3. [Personas](00-product/03-personas.md)
 4. [User journeys](00-product/04-user-journeys.md)
 5. [Feature breakdown](00-product/05-features.md)
+6. [Product spec (as built)](00-product/06-spec.md) — the whole system in one document, with markers for what ships, what is a stub, and what is absent
 
 ### 1 — Design
 1. [Design principles](01-design/01-principles.md)
@@ -96,6 +97,7 @@ Documentation for contributors and operators of [Mergecrew](https://github.com/m
 ## Conventions
 
 - **Tense.** These docs describe the system as it is, not as it might be. Forward-looking work belongs in the roadmap or in issues.
+- **The spec.** [Product spec (as built)](00-product/06-spec.md) is the current-state read of the whole product. It marks each claim `[shipped]`, `[stub]`, `[absent]`, or `[unverified]`. Change it when behaviour changes.
 - **MUST / SHOULD / MAY.** Used in their RFC 2119 sense in normative sections (data model, security, multi-tenancy).
 - **Code samples.** TypeScript unless otherwise noted. Database snippets are PostgreSQL.
 - **Cross-linking.** When a doc claims "the runner does X", it should link to the file that does it. A broken link signals a stale claim.
